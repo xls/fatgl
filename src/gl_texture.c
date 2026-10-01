@@ -176,12 +176,54 @@ void APIENTRY glBindTexture(GLenum target, GLuint name)
     c->unit_bind[k][c->active_unit] = name;
 }
 
+/* the channels an internal format keeps (the base internal format): what
+ * a texture of it samples as, whatever the client data had */
+enum { FGL_BASE_RGBA = 0, FGL_BASE_ALPHA, FGL_BASE_LUM, FGL_BASE_LUM_ALPHA, FGL_BASE_INTENSITY, FGL_BASE_RED, FGL_BASE_RG, FGL_BASE_RGB };
+static int fgl_base_format(GLint ifmt)
+{
+    switch (ifmt) {
+    case 0x1906: case 0x803B: case 0x803C: case 0x803D: case 0x803E: case 0x881C: case 0x8816: /* GL_ALPHA, ALPHA4 .. 16, 16F, 32F */
+        return FGL_BASE_ALPHA;
+    case 1: case 0x1909: case 0x803F: case 0x8040: case 0x8041: case 0x8042: case 0x881E: case 0x8818: case 0x8C46: case 0x8C47:
+        return FGL_BASE_LUM; /* GL_LUMINANCE, 4 .. 16, 16F, 32F, SLUMINANCE(8) */
+    case 2: case 0x190A: case 0x8043: case 0x8044: case 0x8045: case 0x8046: case 0x8047: case 0x8048: case 0x881F: case 0x8819:
+    case 0x8C44: case 0x8C45:
+        return FGL_BASE_LUM_ALPHA; /* GL_LUMINANCE_ALPHA and its sized forms */
+    case 0x8049: case 0x804A: case 0x804B: case 0x804C: case 0x804D: case 0x881D: case 0x8817:
+        return FGL_BASE_INTENSITY; /* GL_INTENSITY, 4 .. 16, 16F, 32F */
+    case 0x1903: case 0x8229: case 0x822A: case 0x822D: case 0x822E: case 0x8F94: case 0x8225: case 0x8231: case 0x8232:
+        return FGL_BASE_RED; /* GL_RED, R8, R16, R16F, R32F, R8_SNORM, COMPRESSED_RED, R8I, R8UI */
+    case 0x8227: case 0x822B: case 0x822C: case 0x822F: case 0x8230: case 0x8F95: case 0x8226:
+        return FGL_BASE_RG; /* GL_RG, RG8, RG16, RG16F, RG32F, RG8_SNORM, COMPRESSED_RG */
+    case 3: case 0x1907: case 0x2A10: case 0x804F: case 0x8050: case 0x8051: case 0x8052: case 0x8053: case 0x8054: case 0x8D62:
+    case 0x8C40: case 0x8C41: case 0x881B: case 0x8815: case 0x8F96: case 0x84ED: case 0x8C3A: case 0x8C3D:
+        return FGL_BASE_RGB; /* GL_RGB and its sized / float / sRGB / packed forms */
+    default: return FGL_BASE_RGBA;
+    }
+}
+
+/* an RGBA8 pixel as the base internal format keeps it */
+static uint32_t fgl_base_pixel(int base, const uint8_t* p)
+{
+    switch (base) {
+    case FGL_BASE_ALPHA: return FM_RGBA(0, 0, 0, p[3]);
+    case FGL_BASE_LUM: return FM_RGBA(p[0], p[0], p[0], 255);
+    case FGL_BASE_LUM_ALPHA: return FM_RGBA(p[0], p[0], p[0], p[3]);
+    case FGL_BASE_INTENSITY: return FM_RGBA(p[0], p[0], p[0], p[0]);
+    case FGL_BASE_RED: return FM_RGBA(p[0], 0, 0, 255);
+    case FGL_BASE_RG: return FM_RGBA(p[0], p[1], 0, 255);
+    case FGL_BASE_RGB: return FM_RGBA(p[0], p[1], p[2], 255);
+    default: return FM_RGBA(p[0], p[1], p[2], p[3]);
+    }
+}
+
 /* copy client pixels (unpack alignment / row length / skips, pixel unpack
- * buffer) into rows of s, as straight RGBA8: d images of w x h, image z at
- * rows y0 + z * ystep */
-static void fgl_upload(fgl_ctx* c, fm_surface* s, int x0, int y0, int w, int h, int d, int ystep, GLenum fmt, GLenum type,
+ * buffer) into rows of s, as straight RGBA8 the internal format ifmt keeps:
+ * d images of w x h, image z at rows y0 + z * ystep */
+static void fgl_upload(fgl_ctx* c, fm_surface* s, int x0, int y0, int w, int h, int d, int ystep, GLint ifmt, GLenum fmt, GLenum type,
                        const void* pixels)
 {
+    int bf = fgl_base_format(ifmt);
     pixels  = fgl_unpack_ptr(c, pixels);
     int bpp = fgl_pixel_bytes(fmt, type);
     if (!pixels || !bpp) {
@@ -201,7 +243,7 @@ static void fgl_upload(fgl_ctx* c, fm_surface* s, int x0, int y0, int w, int h, 
             for (int x = 0; x < w; x += 256) {
                 int n = w - x < 256 ? w - x : 256;
                 fgl_pixels_to_rgba8(fmt, type, row + (size_t)x * (size_t)bpp, n, tmp);
-                for (int i = 0; i < n; i++) o[x + i] = FM_RGBA(tmp[4 * i], tmp[4 * i + 1], tmp[4 * i + 2], tmp[4 * i + 3]);
+                for (int i = 0; i < n; i++) o[x + i] = fgl_base_pixel(bf, tmp + 4 * i);
             }
         }
 }
@@ -286,9 +328,9 @@ static void fgl_tex_image(fgl_ctx* c, GLenum target, GLint level, GLint ifmt, GL
         }
     }
     if (!pixels) return;
-    if (k == FGL_TT_CUBE) fgl_upload(c, t->level0, 0, fgl_face(target) * h, w, h, 1, 0, fmt, type, pixels);
-    else if (k == FGL_TT_3D || k == FGL_TT_2D_ARRAY) fgl_upload(c, t->level0, 0, 0, w, h, d, h, fmt, type, pixels);
-    else fgl_upload(c, t->level0, 0, 0, w, k == FGL_TT_1D ? 1 : h, 1, 0, fmt, type, pixels);
+    if (k == FGL_TT_CUBE) fgl_upload(c, t->level0, 0, fgl_face(target) * h, w, h, 1, 0, ifmt, fmt, type, pixels);
+    else if (k == FGL_TT_3D || k == FGL_TT_2D_ARRAY) fgl_upload(c, t->level0, 0, 0, w, h, d, h, ifmt, fmt, type, pixels);
+    else fgl_upload(c, t->level0, 0, 0, w, k == FGL_TT_1D ? 1 : h, 1, 0, ifmt, fmt, type, pixels);
 }
 
 void APIENTRY glTexImage1D(GLenum target, GLint level, GLint ifmt, GLsizei w, GLint border, GLenum fmt, GLenum type, const void* pixels)
@@ -346,7 +388,7 @@ static void fgl_tex_sub(fgl_ctx* c, GLenum target, GLint level, GLint x, GLint y
     fgl_tex* t = fgl_sub_target(c, target, level, x, y, z, w, h, d, &row0);
     if (!t) return;
     fgl_flush(c);
-    fgl_upload(c, t->level0, x, row0, w, h, d, fgl_layer_h(t), fmt, type, pixels);
+    fgl_upload(c, t->level0, x, row0, w, h, d, fgl_layer_h(t), (GLint)t->ifmt, fmt, type, pixels);
     fm3d_texture_release(t->tex); /* rebuilt (with its mipmaps) on the next use */
     t->tex = NULL;
 }

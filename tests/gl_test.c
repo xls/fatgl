@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "bfg_shaders.h"
+
 typedef char      GLchar;
 typedef ptrdiff_t GLsizeiptr;
 #define GL_BGRA                         0x80E1
@@ -90,6 +92,11 @@ GLFN(void, glBufferData, (GLenum, ptrdiff_t, const void*, GLenum))
 GLFN(void*, glMapBufferRange, (GLenum, ptrdiff_t, ptrdiff_t, GLbitfield))
 GLFN(GLboolean, glUnmapBuffer, (GLenum))
 GLFN(void, glDeleteBuffers, (GLsizei, const GLuint*))
+GLFN(void, glBindAttribLocation, (GLuint, GLuint, const GLchar*))
+GLFN(void, glVertexAttribPointer, (GLuint, GLint, GLenum, GLboolean, GLsizei, const void*))
+GLFN(void, glEnableVertexAttribArray, (GLuint))
+GLFN(void, glDisableVertexAttribArray, (GLuint))
+GLFN(void, glUniform4fv, (GLint, GLsizei, const GLfloat*))
 #define LOAD(name) name##_ = (PFN_##name)(void*)wglGetProcAddress(#name)
 
 static uint32_t px(int x, int y) /* RGBA bytes of the framebuffer as 0xAABBGGRR */
@@ -803,6 +810,212 @@ static void test_map_alignment(void)
     CHECK(bad == 0 && al == 64, "mapped buffers are 64 byte aligned (%d not, %d)", bad, al);
 }
 
+static float h2f(uint16_t h) /* IEEE half to float (normal numbers) */
+{
+    uint32_t e = (h >> 10) & 31, m = h & 1023, b = (uint32_t)(h & 0x8000) << 16 | (e ? (e + 112) << 23 | m << 13 : 0);
+    float    f;
+    memcpy(&f, &b, 4);
+    return f;
+}
+static uint16_t f2h(float f) /* float to IEEE half (normal numbers, truncated) */
+{
+    uint32_t b;
+    memcpy(&b, &f, 4);
+    uint32_t e = (b >> 23) & 255;
+    return (uint16_t)((b >> 16) & 0x8000) | (uint16_t)(e < 113 ? 0 : ((e - 112) << 10 | (b >> 13 & 1023)));
+}
+static float dot3f(const float* a, const float* b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+static float dot4f(const float* a, const float* b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]; }
+static void  norm3(float* v)
+{
+    float l = sqrtf(dot3f(v, v));
+    for (int k = 0; k < 3; k++) v[k] /= l;
+}
+
+/* Doom 3 BFG's light interaction (bump, falloff, projection, YCoCg diffuse,
+ * specular) with its vertex layout (idDrawVert: float position, half
+ * texcoords, byte normal / tangent / color) against the same math in C */
+static void test_bfg_interaction(void)
+{
+    GLuint p = glCreateProgram_();
+    glAttachShader_(p, compile(GL_VERTEX_SHADER, bfg_interaction_vertex));
+    glAttachShader_(p, compile(GL_FRAGMENT_SHADER, bfg_interaction_fragment));
+    /* the game's attribute indices (PC_ATTRIB_INDEX_*) */
+    glBindAttribLocation_(p, 0, "in_Position");
+    glBindAttribLocation_(p, 2, "in_Normal");
+    glBindAttribLocation_(p, 3, "in_Color");
+    glBindAttribLocation_(p, 4, "in_Color2");
+    glBindAttribLocation_(p, 8, "in_TexCoord");
+    glBindAttribLocation_(p, 9, "in_Tangent");
+    glLinkProgram_(p);
+    GLint ok = 0;
+    glGetProgramiv_(p, GL_LINK_STATUS, &ok);
+    CHECK(ok, "BFG interaction program links");
+    if (!ok) return;
+    /* 1 x 1 textures on units 0 .. 4: bump (normal in a and g), falloff, projection, YCoCg diffuse, specular */
+    static const uint8_t tex[5][4] = { { 0x90, 0xA0, 0x00, 0x70 }, { 0xE0, 0xE0, 0xE0, 0xFF }, { 0xFF, 0xC0, 0x80, 0xFF },
+                                       { 0x60, 0x90, 0x00, 0xB0 }, { 0x40, 0x50, 0x60, 0xFF } };
+    GLuint t[5];
+    glGenTextures(5, t);
+    for (int i = 0; i < 5; i++) {
+        glActiveTextureARB_(GL_TEXTURE0 + (GLenum)i);
+        glBindTexture(GL_TEXTURE_2D, t[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, tex[i]);
+        nearest(GL_TEXTURE_2D);
+    }
+    glActiveTextureARB_(GL_TEXTURE0);
+    /* a slanted triangle pair over the window: idDrawVert, 32 bytes */
+    typedef struct {
+        float    xyz[3];
+        uint16_t st[2];
+        uint8_t  normal[4], tangent[4], color[4], color2[4];
+    } drawvert;
+    drawvert v[4];
+    static const float pos[4][3] = { { -1, -1, 0.2f }, { 1, -1, 0.4f }, { 1, 1, 0.6f }, { -1, 1, 0.4f } };
+    for (int i = 0; i < 4; i++) {
+        memcpy(v[i].xyz, pos[i], 12);
+        v[i].st[0] = f2h(0.25f), v[i].st[1] = f2h(0.75f);
+        static const uint8_t n[4] = { 0xA0, 0x60, 0xE8, 0 }, tg[4] = { 0xF0, 0x90, 0x70, 0xFF }, col[4] = { 0xFF, 0xF0, 0xE0, 0xFF };
+        memcpy(v[i].normal, n, 4), memcpy(v[i].tangent, tg, 4), memcpy(v[i].color, col, 4), memset(v[i].color2, 0, 4);
+    }
+    GLuint vb;
+    glGenBuffers_(1, &vb);
+    glBindBuffer_(0x8892, vb);
+    glBufferData_(0x8892, sizeof(v), v, 0x88E8);
+    glVertexAttribPointer_(0, 3, GL_FLOAT, GL_FALSE, 32, (const void*)0);
+    glVertexAttribPointer_(8, 2, GL_HALF_FLOAT, GL_TRUE, 32, (const void*)12);
+    glVertexAttribPointer_(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, 32, (const void*)16);
+    glVertexAttribPointer_(9, 4, GL_UNSIGNED_BYTE, GL_TRUE, 32, (const void*)20);
+    glVertexAttribPointer_(3, 4, GL_UNSIGNED_BYTE, GL_TRUE, 32, (const void*)24);
+    static const GLuint en[5] = { 0, 2, 3, 8, 9 };
+    for (int i = 0; i < 5; i++) glEnableVertexAttribArray_(en[i]);
+    /* uniforms: light / view origins, light and texture matrices, color modulate / add, MVP */
+    float va[18][4] = {
+        { 0.5f, -0.3f, 2.0f, 1.0f }, { -0.2f, 0.4f, 3.0f, 1.0f },                      /* light origin, view origin */
+        { 0.2f, 0.1f, 0.0f, 0.5f }, { 0.0f, 0.3f, 0.1f, 0.5f }, { 0.0f, 0.0f, 0.1f, 1.0f }, /* projection S T Q */
+        { 0.3f, 0.0f, 0.2f, 0.5f },                                                    /* falloff S */
+        { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, /* bump, diffuse, specular */
+        { 1, 1, 1, 1 }, { 0, 0, 0, 0 },                                                /* vertex color modulate, add */
+        { 1, 0, 0, 0 }, { 0, 1, 0, 0 }, { 0, 0, 0.5f, 0 }, { 0, 0, 0, 1 } };            /* MVP rows */
+    float fa[2][4] = { { 1.2f, 1.1f, 1.0f, 1 }, { 0.9f, 1.0f, 1.1f, 1 } }; /* diffuse, specular modifiers */
+    glUseProgram_(p);
+    glUniform4fv_(glGetUniformLocation_(p, "_va_"), 18, &va[0][0]);
+    glUniform4fv_(glGetUniformLocation_(p, "_fa_"), 2, &fa[0][0]);
+    for (int i = 0; i < 5; i++) {
+        char nm[8];
+        snprintf(nm, sizeof(nm), "samp%d", i);
+        glUniform1i_(glGetUniformLocation_(p, nm), i);
+    }
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    static const uint16_t idx[6] = { 0, 1, 2, 0, 2, 3 };
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, idx);
+    glUseProgram_(0);
+    for (int i = 0; i < 5; i++) glDisableVertexAttribArray_(en[i]);
+    glBindBuffer_(0x8892, 0);
+    glDeleteBuffers_(1, &vb);
+    /* the reference at a few pixels (the vertex attributes are the same everywhere; the position varies) */
+    int bad = 0;
+    for (int k = 0; k < 4; k++) {
+        int   x = 8 + 16 * k, y = 12 + 13 * k;
+        float fx = ((float)x + 0.5f) / 32.0f - 1.0f, fy = ((float)y + 0.5f) / 32.0f - 1.0f;
+        /* the plane of the quad (bilinear in x, y: z = 0.4 + 0.1 x + 0.1 y) */
+        float P[4] = { fx, fy, 0.4f + 0.1f * fx + 0.1f * fy, 1.0f };
+        float N[3], T[4], B[3];
+        for (int j = 0; j < 3; j++) N[j] = (float)v[0].normal[j] / 255.0f * 2.0f - 1.0f;
+        for (int j = 0; j < 4; j++) T[j] = (float)v[0].tangent[j] / 255.0f * 2.0f - 1.0f;
+        B[0] = (N[1] * T[2] - N[2] * T[1]) * T[3], B[1] = (N[2] * T[0] - N[0] * T[2]) * T[3], B[2] = (N[0] * T[1] - N[1] * T[0]) * T[3];
+        float L[4], tl[3], hv[3] = { 0, 0, 0 };
+        for (int j = 0; j < 4; j++) L[j] = va[0][j] - P[j];
+        tl[0] = dot3f(T, L), tl[1] = dot3f(B, L), tl[2] = dot3f(N, L); /* linear in the position: exact per pixel */
+        /* the half angle is normalized per vertex, then interpolated (triangles 0 1 2 and 0 2 3) */
+        int   tri[3] = { 0, 1, 2 };
+        float wb[3];
+        if (fy <= fx) wb[2] = (fy + 1) * 0.5f, wb[1] = (fx - fy) * 0.5f;
+        else tri[1] = 2, tri[2] = 3, wb[1] = (fx + 1) * 0.5f, wb[2] = (fy - fx) * 0.5f;
+        wb[0] = 1.0f - wb[1] - wb[2];
+        for (int c3 = 0; c3 < 3; c3++) {
+            const float* Q = pos[tri[c3]];
+            float        Lv[4] = { va[0][0] - Q[0], va[0][1] - Q[1], va[0][2] - Q[2], 0 }, Vv[4] = { va[1][0] - Q[0], va[1][1] - Q[1], va[1][2] - Q[2], 0 };
+            float        ll = sqrtf(dot4f(Lv, Lv)), vl = sqrtf(dot4f(Vv, Vv)), H[3];
+            for (int j = 0; j < 3; j++) H[j] = Lv[j] / ll + Vv[j] / vl;
+            hv[0] += wb[c3] * dot3f(T, H), hv[1] += wb[c3] * dot3f(B, H), hv[2] += wb[c3] * dot3f(N, H);
+        }
+        /* fragment */
+        float bump[4], ycc[4], spec[4], prj[4], fo[4];
+        for (int j = 0; j < 4; j++)
+            bump[j] = tex[0][j] / 255.0f, fo[j] = tex[1][j] / 255.0f, prj[j] = tex[2][j] / 255.0f, ycc[j] = tex[3][j] / 255.0f,
+            spec[j] = tex[4][j] / 255.0f;
+        norm3(tl);
+        ycc[2] = 1.0f / (ycc[2] * 31.875f + 1.0f);
+        ycc[0] *= ycc[2], ycc[1] *= ycc[2];
+        float diff[3] = { ycc[0] - ycc[1] + ycc[3], ycc[1] - 0.50196078f * ycc[2] + ycc[3], -ycc[0] - ycc[1] + 1.00392156f * ycc[2] + ycc[3] };
+        float ln[3]   = { bump[3] - 0.5f, bump[1] - 0.5f, 0 };
+        ln[2]         = sqrtf(fabsf(ln[0] * ln[0] + ln[1] * ln[1] - 0.25f));
+        norm3(ln);
+        norm3(hv);
+        float hdn = dot3f(hv, ln), sp = powf(hdn, 10.0f), lc = dot3f(tl, ln);
+        float out[3], col[3] = { 1.0f, 0xF0 / 255.0f, 0xE0 / 255.0f };
+        for (int j = 0; j < 3; j++) {
+            float o = (diff[j] * fa[0][j] + spec[j] * sp * fa[1][j]) * lc * prj[j] * fo[j] * col[j];
+            out[j]  = o < 0 ? 0 : (o > 1 ? 1 : o);
+        }
+        uint32_t want = 0xFF000000u | (uint32_t)(out[2] * 255 + 0.5f) << 16 | (uint32_t)(out[1] * 255 + 0.5f) << 8 | (uint32_t)(out[0] * 255 + 0.5f);
+        uint32_t got  = px(x, y);
+        if (!close_to(got, want, 3)) bad++, printf("  pixel %d,%d: %08x want %08x\n", x, y, got, want);
+    }
+    CHECK(bad == 0, "BFG interaction matches the reference (%d wrong)", bad);
+    glDeleteTextures(5, t);
+    (void)h2f;
+}
+
+/* GL_CLAMP_TO_BORDER (Doom 3's zero clamped light images) and the channels of
+ * legacy internal formats (GL_INTENSITY8 from luminance data, GL_RGB from RGBA data) */
+static void test_border_and_formats(void)
+{
+    GLuint p = fs_program("#version 150\n"
+                          "uniform sampler2D tex;\n"
+                          "uniform vec3 dir;\n"
+                          "out vec4 col;\n"
+                          "void main() { col = texture(tex, dir.xy); }\n");
+    CHECK(p != 0, "sampling program links");
+    if (!p) return;
+    uint32_t white[4] = { 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu };
+    GLuint   t[3];
+    glGenTextures(3, t);
+    glBindTexture(GL_TEXTURE_2D, t[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, white);
+    nearest(GL_TEXTURE_2D);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, 0x812D); /* GL_CLAMP_TO_BORDER */
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, 0x812D);
+    glUseProgram_(p);
+    GLint dir = glGetUniformLocation_(p, "dir");
+    glUniform3f_(dir, 0.5f, 0.5f, 0);
+    full_quad();
+    uint32_t in = px(32, 32);
+    glUniform3f_(dir, 1.5f, 0.5f, 0);
+    full_quad();
+    uint32_t out = px(32, 32);
+    CHECK(in == 0xFFFFFFFFu && (out & 0x00FFFFFFu) == 0, "GL_CLAMP_TO_BORDER: inside %08x, outside black %08x", in, out);
+    uint8_t lum = 0x60;
+    glBindTexture(GL_TEXTURE_2D, t[1]);
+    glTexImage2D(GL_TEXTURE_2D, 0, 0x804B /* GL_INTENSITY8 */, 1, 1, 0, 0x1909 /* GL_LUMINANCE */, GL_UNSIGNED_BYTE, &lum);
+    nearest(GL_TEXTURE_2D);
+    glUniform3f_(dir, 0.5f, 0.5f, 0);
+    full_quad();
+    uint32_t it = px(32, 32);
+    uint32_t half = 0x40804020u;
+    glBindTexture(GL_TEXTURE_2D, t[2]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &half);
+    nearest(GL_TEXTURE_2D);
+    full_quad();
+    uint32_t rgb = px(32, 32);
+    glUseProgram_(0);
+    CHECK(it == 0x60606060u, "GL_INTENSITY8 from luminance (%08x)", it);
+    CHECK(rgb == 0xFF804020u, "GL_RGB keeps no alpha (%08x)", rgb);
+    glDeleteTextures(3, t);
+}
+
 static LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp) { return DefWindowProcA(w, m, wp, lp); }
 
 int main(void)
@@ -835,6 +1048,8 @@ int main(void)
     LOAD(glProgramLocalParameter4fARB);
     LOAD(glUniform1i), LOAD(glUniform3f), LOAD(glTexImage3D), LOAD(glGenFramebuffers), LOAD(glBindFramebuffer);
     LOAD(glFramebufferTexture2D), LOAD(glCheckFramebufferStatus), LOAD(glDeleteFramebuffers);
+    LOAD(glBindAttribLocation), LOAD(glVertexAttribPointer), LOAD(glEnableVertexAttribArray), LOAD(glDisableVertexAttribArray);
+    LOAD(glUniform4fv);
     LOAD(glGenBuffers), LOAD(glBindBuffer), LOAD(glBufferData), LOAD(glMapBufferRange), LOAD(glUnmapBuffer), LOAD(glDeleteBuffers);
     const char* ext = (const char*)glGetString(GL_EXTENSIONS);
     CHECK(ext && strstr(ext, "GL_ARB_multitexture") && strstr(ext, "GL_EXT_texture_compression_s3tc"), "GL_EXTENSIONS");
@@ -851,6 +1066,8 @@ int main(void)
     test_texture_targets();
     test_polygon_mode();
     test_map_alignment();
+    test_bfg_interaction();
+    test_border_and_formats();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);

@@ -157,6 +157,17 @@ static fm_surface* fgl_swizzle_image(const fgl_tex* t)
     return s;
 }
 
+/* GL wrap modes; GL_CLAMP_TO_BORDER samples transparent black outside (light projections: Doom 3's zero clamp) */
+static fm_wrap fgl_wrap(GLenum w)
+{
+    switch (w) {
+    case GL_REPEAT: return FM_WRAP_REPEAT;
+    case GL_MIRRORED_REPEAT: return FM_WRAP_MIRROR;
+    case GL_CLAMP_TO_BORDER: return FM_WRAP_BORDER;
+    default: return FM_WRAP_CLAMP; /* GL_CLAMP_TO_EDGE, GL_CLAMP */
+    }
+}
+
 int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_sampler* s)
 {
     if (!t || (!t->level0 && !t->depth)) return 0;
@@ -202,9 +213,7 @@ int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_s
     default: s->filter = FM3D_FILTER_TRILINEAR; break;
     }
     if (mag_filter == GL_NEAREST && min_filter == GL_NEAREST) s->filter = FM3D_FILTER_NEAREST;
-    s->wrap_u = wrap_s == GL_REPEAT ? FM_WRAP_REPEAT : (wrap_s == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
-    s->wrap_v = wrap_t == GL_REPEAT ? FM_WRAP_REPEAT : (wrap_t == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
-    s->wrap_w = wrap_r == GL_REPEAT ? FM_WRAP_REPEAT : (wrap_r == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
+    s->wrap_u = fgl_wrap(wrap_s), s->wrap_v = fgl_wrap(wrap_t), s->wrap_w = fgl_wrap(wrap_r);
     *tex      = t->tex;
     return 1;
 }
