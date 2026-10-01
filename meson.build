@@ -46,6 +46,7 @@ sources = files(
   'src/glsl_legacy.c',
   'src/gl_pixels.c',
   'src/overlay.c',
+  'src/arbprog.c',
   'src/gen/gl_stubs.c',
   'src/gen/gl_procs.c',
 )

@@ -45,6 +45,13 @@ WGL_EXT = [
 EXTRA_CORE = [
     "glDebugMessageCallback", "glDebugMessageControl", "glDebugMessageInsert", "glGetDebugMessageLog",
     "glPushDebugGroup", "glPopDebugGroup", "glObjectLabel", "glGetObjectLabel", "glObjectPtrLabel", "glGetObjectPtrLabel",
+    # ARB_vertex_program / ARB_fragment_program, EXT_gpu_program_parameters
+    "glGenProgramsARB", "glDeleteProgramsARB", "glIsProgramARB", "glBindProgramARB", "glProgramStringARB",
+    "glProgramEnvParameter4fARB", "glProgramEnvParameter4fvARB", "glProgramEnvParameter4dARB", "glProgramEnvParameter4dvARB",
+    "glProgramLocalParameter4fARB", "glProgramLocalParameter4fvARB", "glProgramLocalParameter4dARB",
+    "glProgramLocalParameter4dvARB", "glProgramEnvParameters4fvEXT", "glProgramLocalParameters4fvEXT",
+    "glGetProgramEnvParameterfvARB", "glGetProgramEnvParameterdvARB", "glGetProgramLocalParameterfvARB",
+    "glGetProgramLocalParameterdvARB", "glGetProgramivARB", "glGetProgramStringARB",
 ]
 # names applications ask for that no header declares (drivers export them)
 EXTRA_ALIASES = {
@@ -163,7 +170,13 @@ def main():
                 " * compatibility profile functions of 1.2 .. %d.%d (glcorearb.h has the core ones). */\n" % MAX_VERSION)
         f.write("#ifndef FGL_GL_DECLS_H\n#define FGL_GL_DECLS_H\n")
         seen_d = set()
-        for name, ret, args in gl11 + compat:
+        # extension functions fatgl implements whose prototypes only glext.h has
+        extra = []
+        for line in open(os.path.join(ROOT, "include", "GL", "glext.h")):
+            m = PROTO.match(line)
+            if m and line.startswith("GLAPI") and m.group(2) in EXTRA_CORE and m.group(2) not in core_names:
+                extra.append((m.group(2), m.group(1).strip(), m.group(3).strip()))
+        for name, ret, args in gl11 + compat + extra:
             if name in seen_d:
                 continue
             seen_d.add(name)

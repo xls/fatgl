@@ -5,6 +5,7 @@
  * or raw 32 bit integers), primitives become a triangle index list.
  */
 #include "fgl.h"
+#include <stdio.h>
 #include <math.h>
 
 static float fgl_half(uint16_t h)
@@ -67,6 +68,24 @@ static const fgl_attrib* fgl_input_source(fgl_ctx* c, const fgl_program* p, cons
                                           const float** val)
 {
     static const float zero1[4] = { 0, 0, 0, 1 };
+    int                va;
+    if (sscanf(name, "fgl_va%d", &va) == 1 && va >= 0 && va < FGL_ATTRIBS) { /* ARB programs: generic, else aliased */
+        static const int conv[16] = { 0, -1, 1, 2, -1, -1, -1, -1, 3, 4, -1, -1, -1, -1, -1, -1 };
+        *val = c->attr_value[va];
+        if (va == 2) *val = c->cur_normal;
+        else if (va == 3) *val = c->cur_color;
+        else if (va == 8) *val = c->cur_tex;
+        else if (va == 9) *val = c->cur_tex1;
+        else if (va == 0) *val = zero1;
+        if (vao->a[va].enabled) return &vao->a[va];
+        int k = conv[va];
+        if (k < 0 || !c->va[k].on) return NULL;
+        memset(tmp, 0, sizeof(*tmp));
+        tmp->enabled = 1, tmp->size = c->va[k].size, tmp->type = c->va[k].type, tmp->stride = c->va[k].stride;
+        tmp->offset = (GLintptr)c->va[k].ptr, tmp->buffer = c->va[k].buffer;
+        tmp->normalized = k == 2 && tmp->type != GL_FLOAT && tmp->type != GL_DOUBLE;
+        return tmp;
+    }
     if (!strncmp(name, "fgl_", 4)) {
         const char* n = name + 4;
         int         k = -1;
@@ -157,6 +176,14 @@ static void fgl_sync_program(fgl_ctx* c, fgl_program* p)
     else fm3d_set_uniform_block(f, FGL_DEF_FS, p->def[1], (size_t)p->defsize[1]);
     for (int i = 0; i < p->nblocks; i++) {
         const fgl_ublock* b  = &p->blocks[i];
+        if (!strcmp(b->name, "fgl_PV") || !strcmp(b->name, "fgl_PF")) { /* ARB programs: their parameters */
+            static float pb[2][(256 + 8) * 4];
+            int          st = b->name[5] == 'F';
+            size_t       n  = fgl_arb_block(c, st, pb[st], sizeof(pb[st]));
+            for (int k = 0; k < 2; k++)
+                if (b->spv_binding[k] >= 0) fm3d_set_uniform_block(f, b->spv_binding[k], pb[st], n);
+            continue;
+        }
         if (!strcmp(b->name, "fgl_Builtins")) { /* legacy GLSL: the fixed function state */
             if (!c->builtins) c->builtins = (uint8_t*)malloc((size_t)fgl_builtins_size());
             if (!c->builtins) continue;
@@ -243,7 +270,7 @@ static int fgl_assemble(GLenum mode, const int* vid, int count, int vmin, uint32
 void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenum itype, const void* indices, GLint basevertex,
                       GLsizei instances)
 {
-    fgl_program* p = fgl_program_get(c, c->program);
+    fgl_program* p = fgl_active_program(c);
     if (!p || !p->linked || count <= 0 || instances <= 0) return;
     if (mode > GL_POLYGON) {
         if (mode >= GL_LINES_ADJACENCY && mode <= GL_TRIANGLE_STRIP_ADJACENCY) fgl_unimplemented("adjacency primitives (geometry shaders)");
@@ -344,6 +371,13 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
     free(vid), free(tri), free(stream);
 }
 
+fgl_program* fgl_active_program(fgl_ctx* c)
+{
+    if (c->program) return fgl_program_get(c, c->program);
+    if (c->enables & (FGL_E_VP | FGL_E_FP)) return fgl_arb_program(c);
+    return NULL;
+}
+
 /* glBegin / glEnd with a program: the immediate vertices as client arrays */
 void fgl_draw_program_imm(fgl_ctx* c, GLenum mode, const fgl_vtx* v, int n)
 {
@@ -368,22 +402,22 @@ void fgl_draw_program_imm(fgl_ctx* c, GLenum mode, const fgl_vtx* v, int n)
 void APIENTRY glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count, GLsizei n)
 {
     FGL_CTX_OR_RETURN(c);
-    if (c->program) fgl_draw_program(c, mode, first, count, 0, NULL, 0, n);
+    if (fgl_active_program(c)) fgl_draw_program(c, mode, first, count, 0, NULL, 0, n);
 }
 void APIENTRY glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void* idx, GLsizei n)
 {
     FGL_CTX_OR_RETURN(c);
-    if (c->program) fgl_draw_program(c, mode, 0, count, type, idx, 0, n);
+    if (fgl_active_program(c)) fgl_draw_program(c, mode, 0, count, type, idx, 0, n);
 }
 void APIENTRY glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, const void* idx, GLint base)
 {
     FGL_CTX_OR_RETURN(c);
-    if (c->program) fgl_draw_program(c, mode, 0, count, type, idx, base, 1);
+    if (fgl_active_program(c)) fgl_draw_program(c, mode, 0, count, type, idx, base, 1);
 }
 void APIENTRY glDrawElementsInstancedBaseVertex(GLenum mode, GLsizei count, GLenum type, const void* idx, GLsizei n, GLint base)
 {
     FGL_CTX_OR_RETURN(c);
-    if (c->program) fgl_draw_program(c, mode, 0, count, type, idx, base, n);
+    if (fgl_active_program(c)) fgl_draw_program(c, mode, 0, count, type, idx, base, n);
 }
 void APIENTRY glDrawRangeElements(GLenum mode, GLuint lo, GLuint hi, GLsizei count, GLenum type, const void* idx)
 {

@@ -57,6 +57,11 @@ GLFN(void, glGetProgramiv, (GLuint, GLenum, GLint*))
 GLFN(void, glGetProgramInfoLog, (GLuint, GLsizei, GLsizei*, GLchar*))
 GLFN(void, glUseProgram, (GLuint))
 GLFN(void, glActiveTextureARB, (GLenum))
+GLFN(void, glGenProgramsARB, (GLsizei, GLuint*))
+GLFN(void, glBindProgramARB, (GLenum, GLuint))
+GLFN(void, glProgramStringARB, (GLenum, GLenum, GLsizei, const void*))
+GLFN(void, glProgramEnvParameter4fARB, (GLenum, GLuint, GLfloat, GLfloat, GLfloat, GLfloat))
+GLFN(void, glProgramLocalParameter4fARB, (GLenum, GLuint, GLfloat, GLfloat, GLfloat, GLfloat))
 GLFN(void, glMultiTexCoord2fARB, (GLenum, GLfloat, GLfloat))
 #define LOAD(name) name##_ = (PFN_##name)(void*)wglGetProcAddress(#name)
 
@@ -259,6 +264,73 @@ static void test_multitexture(void)
     glDeleteTextures(2, t);
 }
 
+/* ARB_vertex_program / ARB_fragment_program, Doom 3 style */
+static void test_arb_programs(void)
+{
+    const char* vp = "!!ARBvp1.0\n"
+                     "OPTION ARB_position_invariant;\n"
+                     "PARAM scale = program.env[0];\n"
+                     "PARAM tab[3] = { {0, 0, 0, 0}, {0.5, 0.5, 0.5, 1}, {1, 0, 0, 1} };\n"
+                     "ADDRESS a0;\n"
+                     "TEMP r;\n"
+                     "ARL a0.x, scale.w;\n" /* env[0].w = 1: tab[1] */
+                     "MUL r, vertex.texcoord[0], scale;\n"
+                     "MOV result.texcoord[0], r;\n"
+                     "MOV result.color, tab[a0.x];\n"
+                     "END\n";
+    const char* fp = "!!ARBfp1.0\n"
+                     "OPTION ARB_precision_hint_fastest;\n"
+                     "PARAM tint = program.local[1];\n"
+                     "TEMP t, k, x;\n"
+                     "SUB k, fragment.texcoord[0].x, 0.9;\n"
+                     "KIL -k;\n" /* discard where s > 0.9 */
+                     "SWZ t, fragment.texcoord[0], x, y, 0, 1;\n"
+                     "TEX x, fragment.texcoord[0], texture[0], 2D;\n"
+                     "MUL x, x, fragment.color;\n" /* white texel * 0.5 */
+                     "ADD t, t, tint;\n"
+                     "MOV t.z, x.x;\n"
+                     "MOV_SAT result.color, t;\n"
+                     "END\n";
+    GLuint pr[2];
+    glGenProgramsARB_(2, pr);
+    glBindProgramARB_(0x8620, pr[0]); /* GL_VERTEX_PROGRAM_ARB */
+    glProgramStringARB_(0x8620, 0x8875, (GLsizei)strlen(vp), vp);
+    GLint pos = 0;
+    glGetIntegerv(0x864B, &pos); /* GL_PROGRAM_ERROR_POSITION_ARB */
+    CHECK(pos == -1 && glGetError() == GL_NO_ERROR, "vertex program accepted (%d: %s)", pos, (const char*)glGetString(0x8874));
+    glBindProgramARB_(0x8804, pr[1]); /* GL_FRAGMENT_PROGRAM_ARB */
+    glProgramStringARB_(0x8804, 0x8875, (GLsizei)strlen(fp), fp);
+    glGetIntegerv(0x864B, &pos);
+    CHECK(pos == -1 && glGetError() == GL_NO_ERROR, "fragment program accepted (%d: %s)", pos, (const char*)glGetString(0x8874));
+    glProgramEnvParameter4fARB_(0x8620, 0, 1, 1, 1, 1);
+    glProgramLocalParameter4fARB_(0x8804, 1, 0, 0, 0, 0);
+    /* a white texture on unit 0 */
+    GLuint   tx;
+    uint32_t white = 0xFFFFFFFFu;
+    glGenTextures(1, &tx);
+    glBindTexture(GL_TEXTURE_2D, tx);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &white);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    ortho();
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glEnable(0x8620);
+    glEnable(0x8804);
+    quad(0, 0, 64, 64);
+    glDisable(0x8620);
+    glDisable(0x8804);
+    uint32_t a = px(16, 48), want = 0xFF000000u | 0x80u << 16 | (uint32_t)(48.5 / 64 * 255 + 0.5) << 8 | (uint32_t)(16.5 / 64 * 255 + 0.5);
+    CHECK(close_to(a, want, 2), "ARB programs: texcoords, env / local, ADDRESS, SWZ, TEX (%08x want %08x)", a, want);
+    CHECK(px(62, 30) == 0xFF000000u, "ARB KIL (%08x)", px(62, 30));
+    /* a broken program: an error position and string */
+    const char* bad = "!!ARBfp1.0\nMOV result.color, nothing;\nEND\n";
+    glProgramStringARB_(0x8804, 0x8875, (GLsizei)strlen(bad), bad);
+    glGetIntegerv(0x864B, &pos);
+    const char* es = (const char*)glGetString(0x8874);
+    CHECK(pos > 0 && es && strstr(es, "nothing") && glGetError() == GL_INVALID_OPERATION, "ARB error reporting (%d: %s)", pos, es ? es : "");
+    glDeleteTextures(1, &tx);
+}
+
 static void test_legacy_glsl(void)
 {
     /* GLSL 1.10 with the fixed function state */
@@ -315,12 +387,15 @@ int main(void)
     LOAD(glCreateShader), LOAD(glShaderSource), LOAD(glCompileShader), LOAD(glGetShaderiv), LOAD(glGetShaderInfoLog);
     LOAD(glCreateProgram), LOAD(glAttachShader), LOAD(glLinkProgram), LOAD(glGetProgramiv), LOAD(glGetProgramInfoLog);
     LOAD(glUseProgram), LOAD(glActiveTextureARB), LOAD(glMultiTexCoord2fARB);
+    LOAD(glGenProgramsARB), LOAD(glBindProgramARB), LOAD(glProgramStringARB), LOAD(glProgramEnvParameter4fARB);
+    LOAD(glProgramLocalParameter4fARB);
     const char* ext = (const char*)glGetString(GL_EXTENSIONS);
     CHECK(ext && strstr(ext, "GL_ARB_multitexture") && strstr(ext, "GL_EXT_texture_compression_s3tc"), "GL_EXTENSIONS");
     CHECK(glActiveTextureARB_ && glMultiTexCoord2fARB_, "ARB multitexture entry points");
     test_pixels();
     test_raster_state();
     test_multitexture();
+    test_arb_programs();
     test_legacy_glsl();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);

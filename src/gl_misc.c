@@ -675,6 +675,10 @@ int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
     case GL_FOG_END: v[0] = c->fog_end; return 1;
     case GL_FOG_COLOR: for (int i = 0; i < 4; i++) v[i] = c->fog_color[i]; return 4;
     case GL_MAX_TEXTURE_UNITS: v[0] = 2; return 1; /* fixed function texture stages */
+    case GL_MAX_TEXTURE_COORDS: v[0] = 8; return 1;
+    case GL_PROGRAM_ERROR_POSITION_ARB: v[0] = c->arb_error_pos; return 1;
+    case GL_VERTEX_PROGRAM_ARB: v[0] = (c->enables & FGL_E_VP) != 0; return 1;
+    case GL_FRAGMENT_PROGRAM_ARB: v[0] = (c->enables & FGL_E_FP) != 0; return 1;
     case GL_MAX_DEBUG_MESSAGE_LENGTH: v[0] = 1024; return 1;
     case GL_MAX_DEBUG_LOGGED_MESSAGES: case GL_DEBUG_LOGGED_MESSAGES: v[0] = 0; return 1;
     case GL_MAX_DEBUG_GROUP_STACK_DEPTH: v[0] = 64; return 1;

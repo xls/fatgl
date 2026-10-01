@@ -570,6 +570,42 @@ static void fgl_log_append(fgl_program* p, const char* s)
     p->log = n;
 }
 
+/* glslang numbers the uniform blocks of each stage on its own (a vertex
+ * block and a fragment block both get binding 0), fatmap binds blocks per
+ * context: give every block name of the program its own binding (the same
+ * name in both stages shares one; the default block keeps FGL_DEF_VS) */
+static void fgl_unique_block_bindings(uint32_t* w[2], const size_t n[2])
+{
+    char names[FM3D_MAX_UNIFORM_BLOCKS][96];
+    int  nnames = 0;
+    for (int k = 0; k < 2; k++) {
+        sp_mod m;
+        if (!sp_init(&m, w[k], n[k])) continue;
+        for (size_t q = 5; q < n[k];) {
+            uint32_t wc = w[k][q] >> 16, op = w[k][q] & 0xffff;
+            if (!wc) break;
+            if (op == 71 /* OpDecorate */ && w[k][q + 2] == 33 /* Binding */ && wc >= 4) {
+                uint32_t        var = w[k][q + 1];
+                const uint32_t* vd  = sp_def(&m, var);
+                if (vd && (vd[0] & 0xffff) == SP_OpVariable && vd[3] == 2 /* Uniform */ && w[k][q + 3] != FGL_DEF_VS) {
+                    const uint32_t* pt = sp_def(&m, vd[1]);
+                    const char*     bn = pt ? sp_name(&m, pt[3], -1) : "";
+                    int             b  = -1;
+                    for (int i = 0; i < nnames; i++)
+                        if (!strcmp(names[i], bn)) b = i;
+                    if (b < 0 && nnames < FM3D_MAX_UNIFORM_BLOCKS - 1) {
+                        b = nnames++;
+                        snprintf(names[b], sizeof(names[b]), "%s", bn);
+                    }
+                    if (b >= 0) w[k][q + 3] = (uint32_t)(b >= FGL_DEF_VS ? b + 1 : b);
+                }
+            }
+            q += wc;
+        }
+        free(m.at);
+    }
+}
+
 void APIENTRY glLinkProgram(GLuint name)
 {
     FGL_CTX_OR_RETURN(c);
@@ -625,6 +661,7 @@ void APIENTRY glLinkProgram(GLuint name)
         if (!words[k]) ok = 0;
         else glslang_program_SPIRV_get(gp, words[k]);
     }
+    if (ok) fgl_unique_block_bindings(words, nw);
     if (ok) {
         p->max_loc = -1;
         fgl_reflect(p, 0, words[0], nw[0]);

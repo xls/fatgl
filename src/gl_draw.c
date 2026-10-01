@@ -162,7 +162,7 @@ void APIENTRY glEnd(void)
         return;
     }
     c->in_begin = 0;
-    if (c->program) fgl_draw_program_imm(c, c->prim, c->imm, c->nimm);
+    if (fgl_active_program(c)) fgl_draw_program_imm(c, c->prim, c->imm, c->nimm);
     else fgl_draw_prim(c, c->prim, c->imm, c->nimm);
 }
 
@@ -272,7 +272,7 @@ static void fgl_sync_fixed(fgl_ctx* c)
 }
 
 /* the vertices with a second set of texture coordinates when unit 1 is on */
-static int fgl_stage1(fgl_ctx* c) { return (c->tex2d_units & 2) && c->unit_tex[1] && !c->program; }
+static int fgl_stage1(fgl_ctx* c) { return (c->tex2d_units & 2) && c->unit_tex[1] && !fgl_active_program(c); }
 
 /* GL's provoking vertex for flat shading: the last vertex of each
  * triangle (the first vertex for GL_POLYGON) */
@@ -497,7 +497,7 @@ void APIENTRY glDrawArrays(GLenum mode, GLint first, GLsizei count)
         fgl_error(GL_INVALID_VALUE);
         return;
     }
-    if (c->program) {
+    if (fgl_active_program(c)) {
         fgl_draw_program(c, mode, first, count, 0, NULL, 0, 1);
         return;
     }
@@ -516,7 +516,7 @@ void APIENTRY glDrawElements(GLenum mode, GLsizei count, GLenum type, const void
         fgl_error(GL_INVALID_VALUE);
         return;
     }
-    if (c->program) {
+    if (fgl_active_program(c)) {
         fgl_draw_program(c, mode, 0, count, type, idx, 0, 1);
         return;
     }

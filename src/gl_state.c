@@ -70,6 +70,7 @@ void fgl_ctx_free(fgl_ctx* c)
     fgl_fbo_free(c);
     fgl_misc_free(c);
     fgl_overlay_free(c);
+    fgl_arb_free(c);
     free(c->tex);
     for (int i = 0; i < c->nlists; i++) free(c->lists[i].ops);
     free(c->lists);
@@ -143,6 +144,8 @@ static unsigned fgl_cap_bit(GLenum cap)
     case GL_PRIMITIVE_RESTART: return FGL_E_RESTART;
     case GL_PROGRAM_POINT_SIZE: return FGL_E_PSIZE;
     case GL_DEBUG_OUTPUT: return FGL_E_DEBUG;
+    case GL_VERTEX_PROGRAM_ARB: return FGL_E_VP;
+    case GL_FRAGMENT_PROGRAM_ARB: return FGL_E_FP;
     case GL_POLYGON_OFFSET_FILL: return FGL_E_POFFSET;
     default: return 0;
     }
@@ -429,6 +432,7 @@ const GLubyte* APIENTRY glGetString(GLenum name)
         return (const GLubyte*)g_renderer;
     case GL_VERSION: return (const GLubyte*)(c && c->core ? "3.3.0 Core Profile fatgl 0.1.0" : "3.3.0 fatgl 0.1.0");
     case GL_SHADING_LANGUAGE_VERSION: return (const GLubyte*)"3.30 fatgl (glslang)";
+    case GL_PROGRAM_ERROR_STRING_ARB: return (const GLubyte*)(c ? fgl_arb_error_string(c) : "");
     case GL_EXTENSIONS:
         if (c && c->core) {
             fgl_error(GL_INVALID_ENUM); /* core profile: glGetStringi */
@@ -453,7 +457,8 @@ static const char* g_ext[] = {
     "GL_ARB_instanced_arrays", "GL_ARB_draw_elements_base_vertex", "GL_ARB_map_buffer_range", "GL_ARB_copy_buffer",
     "GL_ARB_half_float_vertex", "GL_ARB_half_float_pixel", "GL_ARB_texture_compression_rgtc", "GL_ARB_sync", "GL_ARB_timer_query",
     "GL_ARB_sampler_objects", "GL_ARB_vertex_type_2_10_10_10_rev", "GL_ARB_explicit_attrib_location",
-    "GL_EXT_texture_filter_anisotropic", "GL_EXT_texture_lod_bias", "GL_ARB_debug_output", "GL_KHR_debug" };
+    "GL_EXT_texture_filter_anisotropic", "GL_EXT_texture_lod_bias", "GL_ARB_debug_output", "GL_KHR_debug",
+    "GL_ARB_vertex_program", "GL_ARB_fragment_program" };
 #define FGL_NEXT ((int)(sizeof(g_ext) / sizeof(g_ext[0])))
 
 /* the GL_EXTENSIONS string (compatibility contexts), built once */

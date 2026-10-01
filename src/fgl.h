@@ -44,6 +44,47 @@
 #define GL_FOG_COORD_SRC          0x8450
 #define GL_CLIENT_ACTIVE_TEXTURE  0x84E1
 #define GL_MAX_TEXTURE_UNITS      0x84E2
+#define GL_MAX_TEXTURE_COORDS     0x8871
+/* ARB_vertex_program / ARB_fragment_program */
+#define GL_VERTEX_PROGRAM_ARB                       0x8620
+#define GL_FRAGMENT_PROGRAM_ARB                     0x8804
+#define GL_PROGRAM_FORMAT_ASCII_ARB                 0x8875
+#define GL_PROGRAM_ERROR_POSITION_ARB               0x864B
+#define GL_PROGRAM_ERROR_STRING_ARB                 0x8874
+#define GL_PROGRAM_LENGTH_ARB                       0x8627
+#define GL_PROGRAM_FORMAT_ARB                       0x8876
+#define GL_PROGRAM_BINDING_ARB                      0x8677
+#define GL_PROGRAM_INSTRUCTIONS_ARB                 0x88A0
+#define GL_MAX_PROGRAM_INSTRUCTIONS_ARB             0x88A1
+#define GL_PROGRAM_NATIVE_INSTRUCTIONS_ARB          0x88A2
+#define GL_MAX_PROGRAM_NATIVE_INSTRUCTIONS_ARB      0x88A3
+#define GL_PROGRAM_TEMPORARIES_ARB                  0x88A4
+#define GL_MAX_PROGRAM_TEMPORARIES_ARB              0x88A5
+#define GL_PROGRAM_NATIVE_TEMPORARIES_ARB           0x88A6
+#define GL_MAX_PROGRAM_NATIVE_TEMPORARIES_ARB       0x88A7
+#define GL_PROGRAM_PARAMETERS_ARB                   0x88A8
+#define GL_MAX_PROGRAM_PARAMETERS_ARB               0x88A9
+#define GL_PROGRAM_NATIVE_PARAMETERS_ARB            0x88AA
+#define GL_MAX_PROGRAM_NATIVE_PARAMETERS_ARB        0x88AB
+#define GL_PROGRAM_ATTRIBS_ARB                      0x88AC
+#define GL_MAX_PROGRAM_ATTRIBS_ARB                  0x88AD
+#define GL_PROGRAM_NATIVE_ATTRIBS_ARB               0x88AE
+#define GL_MAX_PROGRAM_NATIVE_ATTRIBS_ARB           0x88AF
+#define GL_PROGRAM_ADDRESS_REGISTERS_ARB            0x88B0
+#define GL_MAX_PROGRAM_ADDRESS_REGISTERS_ARB        0x88B1
+#define GL_PROGRAM_NATIVE_ADDRESS_REGISTERS_ARB     0x88B2
+#define GL_MAX_PROGRAM_NATIVE_ADDRESS_REGISTERS_ARB 0x88B3
+#define GL_MAX_PROGRAM_LOCAL_PARAMETERS_ARB         0x88B4
+#define GL_MAX_PROGRAM_ENV_PARAMETERS_ARB           0x88B5
+#define GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB          0x88B6
+#define GL_MAX_PROGRAM_MATRICES_ARB                 0x862F
+#define GL_MAX_PROGRAM_MATRIX_STACK_DEPTH_ARB       0x862E
+#define GL_MAX_PROGRAM_ALU_INSTRUCTIONS_ARB         0x880B
+#define GL_MAX_PROGRAM_TEX_INSTRUCTIONS_ARB         0x880C
+#define GL_MAX_PROGRAM_TEX_INDIRECTIONS_ARB         0x880D
+#define GL_MAX_PROGRAM_NATIVE_ALU_INSTRUCTIONS_ARB  0x880E
+#define GL_MAX_PROGRAM_NATIVE_TEX_INSTRUCTIONS_ARB  0x880F
+#define GL_MAX_PROGRAM_NATIVE_TEX_INDIRECTIONS_ARB  0x8810
 #define GL_MATRIX_MODE            0x0BA0
 #define GL_NORMALIZE              0x0BA1
 #define GL_MODELVIEW_MATRIX       0x0BA6
@@ -108,7 +149,8 @@ enum {
     FGL_E_DEPTH = 1u << 0, FGL_E_CULL = 1u << 1, FGL_E_LIGHTING = 1u << 2, FGL_E_TEX2D = 1u << 3, FGL_E_BLEND = 1u << 4,
     FGL_E_ALPHA = 1u << 5, FGL_E_COLMAT = 1u << 6, FGL_E_NORMALIZE = 1u << 7, FGL_E_SCISSOR = 1u << 8,
     FGL_E_STENCIL = 1u << 9, FGL_E_POFFSET = 1u << 10, FGL_E_RESTART = 1u << 11,
-    FGL_E_PSIZE = 1u << 12, FGL_E_FOG = 1u << 13, FGL_E_DEBUG = 1u << 14
+    FGL_E_PSIZE = 1u << 12, FGL_E_FOG = 1u << 13, FGL_E_DEBUG = 1u << 14,
+    FGL_E_VP = 1u << 15, FGL_E_FP = 1u << 16 /* GL_VERTEX_PROGRAM_ARB, GL_FRAGMENT_PROGRAM_ARB */
 };
 
 typedef struct fgl_vtx { /* an immediate mode vertex: object position, current attributes */
@@ -396,6 +438,16 @@ typedef struct fgl_ctx {
     float    point_size, line_width;
     uint8_t* builtins; /* the fgl_Builtins block of legacy GLSL programs */
     fgl_counters cnt;  /* this frame */
+    /* ARB_vertex_program / ARB_fragment_program (arbprog.c) */
+    void*  arb_progs;
+    int    narb;
+    GLuint arb_bound[2]; /* vertex, fragment */
+    float  arb_env[2][96][4];
+    char   arb_error[256];
+    int    arb_error_pos;
+    void*  arb_fixed[3];
+    void*  arb_pairs;
+    int    narb_pairs, carb_pairs;
     GLDEBUGPROC  dbg_cb; /* glDebugMessageCallback */
     const void*  dbg_user;
     void*        overlay;
@@ -443,6 +495,14 @@ void      fgl_draw_program_imm(fgl_ctx* c, GLenum mode, const fgl_vtx* v, int n)
 
 /* gl_misc.c: stencil state into fatmap, glGet values kept there (0: not one), cleanup */
 void fgl_sync_stencil(fgl_ctx* c);
+/* arbprog.c: the GL program of the enabled ARB programs (NULL: none), their
+ * parameter blocks (stage 0 vertex, 1 fragment; bytes written), errors, cleanup */
+fgl_program* fgl_arb_program(fgl_ctx* c);
+size_t       fgl_arb_block(fgl_ctx* c, int stage, float* out, size_t max);
+const char*  fgl_arb_error_string(fgl_ctx* c);
+void         fgl_arb_free(fgl_ctx* c);
+/* the program a draw uses: the GLSL program, else the ARB programs */
+fgl_program* fgl_active_program(fgl_ctx* c);
 /* gl_pixels.c: client pixel data <-> straight RGBA8, compressed textures, pixel buffers */
 int         fgl_pixel_bytes(GLenum fmt, GLenum type); /* 0: unsupported */
 void        fgl_pixels_to_rgba8(GLenum fmt, GLenum type, const uint8_t* src, int n, uint8_t* rgba);
