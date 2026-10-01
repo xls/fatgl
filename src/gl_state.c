@@ -420,7 +420,7 @@ void fgl_sync(fgl_ctx* c)
         cull = c->cull_face == GL_FRONT ? FM3D_CULL_FRONT : (c->cull_face == GL_FRONT_AND_BACK ? FM3D_CULL_FRONT_AND_BACK : FM3D_CULL_BACK);
     fm3d_set_cull(f, cull, c->front_face == GL_CW ? FM3D_FRONT_CW : FM3D_FRONT_CCW);
     fgl_sync_blend(c);
-    fm3d_set_color_write(f, c->color_mask[0] || c->color_mask[1] || c->color_mask[2] || c->color_mask[3]);
+    fm3d_set_color_mask(f, c->color_mask[0], c->color_mask[1], c->color_mask[2], c->color_mask[3]); /* glColorMask, per channel */
     fm3d_set_alpha_test(f, (c->enables & FGL_E_ALPHA) ? (fm3d_compare)(c->alpha_func - GL_NEVER) : FM3D_ALWAYS, c->alpha_ref);
     if (c->enables & FGL_E_POFFSET) fm3d_set_depth_bias(f, c->poly_factor, c->poly_units);
     else fm3d_set_depth_bias(f, 0, 0);

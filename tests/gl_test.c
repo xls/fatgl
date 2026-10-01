@@ -1143,6 +1143,116 @@ static void test_screen_copy(void)
     glDeleteTextures(1, &t);
 }
 
+static float blend_factor(GLenum f, const float* S, const float* D, const float* K, int k)
+{
+    switch (f) {
+    case GL_ZERO: return 0;
+    case GL_ONE: return 1;
+    case GL_SRC_COLOR: return S[k];
+    case GL_ONE_MINUS_SRC_COLOR: return 1 - S[k];
+    case GL_DST_COLOR: return D[k];
+    case GL_ONE_MINUS_DST_COLOR: return 1 - D[k];
+    case GL_SRC_ALPHA: return S[3];
+    case GL_ONE_MINUS_SRC_ALPHA: return 1 - S[3];
+    case GL_DST_ALPHA: return D[3];
+    case GL_ONE_MINUS_DST_ALPHA: return 1 - D[3];
+    case 0x8001: return K[k];     /* GL_CONSTANT_COLOR */
+    case 0x8002: return 1 - K[k]; /* GL_ONE_MINUS_CONSTANT_COLOR */
+    case 0x8003: return K[3];     /* GL_CONSTANT_ALPHA */
+    case 0x8004: return 1 - K[3]; /* GL_ONE_MINUS_CONSTANT_ALPHA */
+    default: { /* GL_SRC_ALPHA_SATURATE */
+        float m = S[3] < 1 - D[3] ? S[3] : 1 - D[3];
+        return k == 3 ? 1 : m;
+    }
+    }
+}
+
+/* every glBlendFunc pair against the GL equation, fixed function and GLSL
+ * (Doom 3's filter stages: GL_DST_COLOR, GL_ZERO) */
+static void test_blend_matrix(void)
+{
+    typedef void(APIENTRY * PFNBC)(GLfloat, GLfloat, GLfloat, GLfloat);
+    PFNBC  bc = (PFNBC)(void*)wglGetProcAddress("glBlendColor");
+    GLuint p  = fs_program("#version 150\n"
+                           "uniform vec4 c;\n"
+                           "out vec4 col;\n"
+                           "void main() { col = c; }\n");
+    static const GLenum fs[15] = { GL_ZERO, GL_ONE, GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA,
+                                   GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA, 0x8001, 0x8002, 0x8003, 0x8004, GL_SRC_ALPHA_SATURATE };
+    const float S[4] = { 0.7f, 0.3f, 0.9f, 0.6f }, D[4] = { 0.2f, 0.4f, 0.6f, 0.5f }, K[4] = { 0.1f, 0.5f, 0.8f, 0.3f };
+    ortho();
+    glDisable(GL_TEXTURE_2D);
+    if (bc) bc(K[0], K[1], K[2], K[3]);
+    int bad = 0, tried = 0;
+    for (int path = 0; path < 2; path++)
+        for (int a = 0; a < 15; a++)
+            for (int b = 0; b < 14; b++) { /* GL_SRC_ALPHA_SATURATE is a source factor only */
+                glDisable(GL_BLEND);
+                glClearColor(D[0], D[1], D[2], D[3]);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glEnable(GL_BLEND);
+                glBlendFunc(fs[a], fs[b]);
+                if (path) {
+                    glUseProgram_(p);
+                    glUniform4fv_(glGetUniformLocation_(p, "c"), 1, S);
+                    full_quad();
+                    glUseProgram_(0);
+                    ortho();
+                } else {
+                    glColor4f(S[0], S[1], S[2], S[3]);
+                    quad(0, 0, 64, 64);
+                }
+                uint32_t got = px(32, 32), want = 0;
+                float    Dq[4];
+                for (int k = 0; k < 4; k++) Dq[k] = (float)(int)(D[k] * 255 + 0.5f) / 255.0f; /* the stored destination */
+                for (int k = 0; k < 4; k++) {
+                    float o = S[k] * blend_factor(fs[a], S, Dq, K, k) + Dq[k] * blend_factor(fs[b], S, Dq, K, k);
+                    o       = o < 0 ? 0 : (o > 1 ? 1 : o);
+                    want |= (uint32_t)(o * 255 + 0.5f) << (8 * k);
+                }
+                tried++;
+                if (!close_to(got, want, 3)) {
+                    if (bad < 6) printf("  %s blend %04x %04x: %08x want %08x\n", path ? "glsl" : "fixed", fs[a], fs[b], got, want);
+                    bad++;
+                }
+            }
+    glDisable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ZERO);
+    glColor4f(1, 1, 1, 1);
+    CHECK(bad == 0, "glBlendFunc matrix: %d of %d wrong", bad, tried);
+}
+
+/* glColorMask per channel (Doom 3's maskcolor stages write alpha only), in draws and clears */
+static void test_color_mask(void)
+{
+    ortho();
+    glDisable(GL_TEXTURE_2D);
+    glClearColor(0.25f, 0.5f, 0.75f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE); /* alpha only */
+    glColor4f(1, 1, 1, 0.5f);
+    quad(0, 0, 64, 64);
+    glColorMask(GL_TRUE, GL_FALSE, GL_TRUE, GL_FALSE);
+    glClearColor(0, 1, 0, 0);
+    glClear(GL_COLOR_BUFFER_BIT); /* red and blue to 0 */
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    uint32_t p = px(32, 32);
+    CHECK(close_to(p, 0x80008000u, 1), "glColorMask: alpha only draw, red / blue only clear (%08x)", p);
+    /* destination alpha blending after an alpha only pass */
+    glClearColor(0, 0, 0, 1), glClear(GL_COLOR_BUFFER_BIT);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+    glColor4f(1, 1, 1, 0.25f), quad(0, 0, 64, 64);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_DST_ALPHA, GL_ONE);
+    glColor4f(1, 1, 1, 1), quad(0, 0, 64, 64);
+    glDisable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ZERO);
+    p = px(32, 32);
+    CHECK(close_to(p & 0x00FFFFFFu, 0x00404040u, 1), "GL_DST_ALPHA after an alpha only pass (%08x)", p);
+    glClearColor(0, 0, 0, 1);
+}
+
 static LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp) { return DefWindowProcA(w, m, wp, lp); }
 
 int main(void)
@@ -1197,6 +1307,8 @@ int main(void)
     test_border_and_formats();
     test_bilinear_gray();
     test_screen_copy();
+    test_blend_matrix();
+    test_color_mask();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);

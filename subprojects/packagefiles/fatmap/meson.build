@@ -1,5 +1,5 @@
 # the prebuilt fatmap release package as a Meson dependency
-project('fatmap', 'c', version : '0.7.0')
+project('fatmap', 'c', version : '0.8.0')
 cc  = meson.get_compiler('c')
 lib = cc.find_library('fatmap', dirs : meson.current_source_dir() / 'lib', static : true)
 fatmap_dep = declare_dependency(
