@@ -5,3 +5,4 @@
 /subprojects/fatmap-src
 /probe_*.spv
 /dist/
+tools/bench/*.ppm
