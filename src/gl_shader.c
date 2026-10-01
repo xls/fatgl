@@ -114,7 +114,7 @@ static int g_glslang_init;
 
 static glslang_stage_t fgl_stage(GLenum type) { return type == GL_VERTEX_SHADER ? GLSLANG_STAGE_VERTEX : GLSLANG_STAGE_FRAGMENT; }
 
-static glslang_shader_t* fgl_glslang_shader(GLenum type, const char* src, char** log)
+static glslang_shader_t* fgl_glslang_shader(GLenum type, const char* src, int ntexcoords, char** log)
 {
     if (!g_glslang_init) g_glslang_init = glslang_initialize_process();
     glslang_input_t in;
@@ -125,18 +125,24 @@ static glslang_shader_t* fgl_glslang_shader(GLenum type, const char* src, char**
     in.client_version          = GLSLANG_TARGET_VULKAN_1_0;
     in.target_language         = GLSLANG_TARGET_SPV;
     in.target_language_version = GLSLANG_TARGET_SPV_1_0;
-    in.code                    = src;
+    int   builtins = 0; /* (the fgl_Builtins block shows up in the reflection) */
+    char* up       = fgl_glsl_upgrade(src, type, ntexcoords, &builtins); /* legacy GLSL -> 3.30 core */
+    in.code                    = up ? up : src;
     in.default_version         = 110;
     in.default_profile         = GLSLANG_NO_PROFILE;
     in.messages                = GLSLANG_MSG_DEFAULT_BIT;
     in.resource                = glslang_default_resource();
     glslang_shader_t* sh       = glslang_shader_create(&in);
-    if (!sh) return NULL;
+    if (!sh) {
+        free(up);
+        return NULL;
+    }
     glslang_shader_set_options(sh, GLSLANG_SHADER_AUTO_MAP_BINDINGS | GLSLANG_SHADER_AUTO_MAP_LOCATIONS |
                                        GLSLANG_SHADER_VULKAN_RULES_RELAXED | GLSLANG_SHADER_BINDINGS_PER_RESOURCE_TYPE);
     glslang_shader_set_default_uniform_block_name(sh, "gl_DefaultUniformBlock");
     glslang_shader_set_default_uniform_block_set_and_binding(sh, 0, type == GL_VERTEX_SHADER ? FGL_DEF_VS : FGL_DEF_FS);
     int ok = glslang_shader_preprocess(sh, &in) && glslang_shader_parse(sh, &in);
+    free(up); /* glslang reads the source (it keeps the pointer) until parsing is done */
     if (log) {
         const char* l = glslang_shader_get_info_log(sh);
         *log          = l && *l ? _strdup(l) : NULL;
@@ -163,7 +169,7 @@ void APIENTRY glCompileShader(GLuint name)
         s->log = _strdup("fatgl: geometry shaders are not supported yet\n");
         return;
     }
-    glslang_shader_t* sh = s->src ? fgl_glslang_shader(s->type, s->src, &s->log) : NULL;
+    glslang_shader_t* sh = s->src ? fgl_glslang_shader(s->type, s->src, 8, &s->log) : NULL;
     s->compiled          = sh != NULL;
     if (sh) glslang_shader_delete(sh);
 }
@@ -591,9 +597,14 @@ void APIENTRY glLinkProgram(GLuint name)
     uint32_t*          words[2] = { NULL, NULL };
     size_t             nw[2]    = { 0, 0 };
     int                ok       = 1;
+    int                ntc      = 0; /* legacy gl_TexCoord[]: one size for both stages */
+    for (int k = 0; k < 2; k++) {
+        int n = st[k]->src ? fgl_glsl_texcoords(st[k]->src) : 0;
+        ntc   = n > ntc ? n : ntc;
+    }
     for (int k = 0; k < 2 && ok; k++) {
         char* log = NULL;
-        sh[k]     = st[k]->src ? fgl_glslang_shader(st[k]->type, st[k]->src, &log) : NULL;
+        sh[k]     = st[k]->src ? fgl_glslang_shader(st[k]->type, st[k]->src, ntc, &log) : NULL;
         if (log) fgl_log_append(p, log);
         free(log);
         ok = sh[k] != NULL;

@@ -23,6 +23,8 @@ fgl_tex* fgl_texture(fgl_ctx* c, GLuint name, int create)
     memset(t, 0, sizeof(*t));
     t->used = 1, t->name = name;
     t->min_filter = GL_NEAREST_MIPMAP_LINEAR, t->mag_filter = GL_LINEAR, t->wrap_s = t->wrap_t = GL_REPEAT;
+    t->ifmt = GL_RGBA, t->min_lod = -1000, t->max_lod = 1000, t->max_level = 1000;
+    t->compare_mode = GL_NONE, t->compare_func = GL_LEQUAL;
     return t;
 }
 
@@ -158,7 +160,7 @@ void APIENTRY glTexImage2D(GLenum target, GLint level, GLint ifmt, GLsizei w, GL
     fm3d_texture_release(t->tex);
     fm_surface_destroy(t->level0);
     fm_surface_destroy(t->depth);
-    t->tex = NULL, t->level0 = t->depth = NULL, t->rendered = 0;
+    t->tex = NULL, t->level0 = t->depth = NULL, t->rendered = 0, t->ifmt = (GLenum)ifmt;
     if (w <= 0 || h <= 0) return;
     if (depth) { /* a depth (stencil) texture: a fatmap depth surface */
         fm_format f = ifmt == GL_DEPTH_COMPONENT16 ? FM_FORMAT_D16
@@ -204,12 +206,201 @@ void APIENTRY glTexParameteri(GLenum target, GLenum p, GLint v)
     case GL_TEXTURE_MAG_FILTER: t->mag_filter = (GLenum)v; break;
     case GL_TEXTURE_WRAP_S: t->wrap_s = (GLenum)v; break;
     case GL_TEXTURE_WRAP_T: t->wrap_t = (GLenum)v; break;
-    default: break;
+    case GL_TEXTURE_BASE_LEVEL: t->base_level = v; break;
+    case GL_TEXTURE_MAX_LEVEL: t->max_level = v; break;
+    case GL_TEXTURE_COMPARE_MODE: t->compare_mode = (GLenum)v; break;
+    case GL_TEXTURE_COMPARE_FUNC: t->compare_func = (GLenum)v; break;
+    case GL_TEXTURE_MIN_LOD: t->min_lod = (float)v; break;
+    case GL_TEXTURE_MAX_LOD: t->max_lod = (float)v; break;
+    default: break; /* wrap r, swizzles, anisotropy, generate mipmap: accepted */
     }
 }
-void APIENTRY glTexParameterf(GLenum target, GLenum p, GLfloat v) { glTexParameteri(target, p, (GLint)v); }
-void APIENTRY glTexParameteriv(GLenum target, GLenum p, const GLint* v) { glTexParameteri(target, p, v[0]); }
-void APIENTRY glTexParameterfv(GLenum target, GLenum p, const GLfloat* v) { glTexParameteri(target, p, (GLint)v[0]); }
+void APIENTRY glTexParameterf(GLenum target, GLenum p, GLfloat v)
+{
+    FGL_CTX_OR_RETURN(c);
+    fgl_tex* t = target == GL_TEXTURE_2D && FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 1) : NULL;
+    if (t && p == GL_TEXTURE_MIN_LOD) t->min_lod = v;
+    else if (t && p == GL_TEXTURE_MAX_LOD) t->max_lod = v;
+    else if (t && p == GL_TEXTURE_LOD_BIAS) t->lod_bias = v;
+    else glTexParameteri(target, p, (GLint)v);
+}
+void APIENTRY glTexParameteriv(GLenum target, GLenum p, const GLint* v)
+{
+    if (p == GL_TEXTURE_BORDER_COLOR) {
+        GLfloat f[4] = { v[0] / 2147483647.0f, v[1] / 2147483647.0f, v[2] / 2147483647.0f, v[3] / 2147483647.0f };
+        glTexParameterfv(target, p, f);
+        return;
+    }
+    glTexParameteri(target, p, v[0]);
+}
+void APIENTRY glTexParameterfv(GLenum target, GLenum p, const GLfloat* v)
+{
+    FGL_CTX_OR_RETURN(c);
+    fgl_tex* t = target == GL_TEXTURE_2D && FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 1) : NULL;
+    if (t && p == GL_TEXTURE_BORDER_COLOR) memcpy(t->border, v, 16);
+    else glTexParameterf(target, p, v[0]);
+}
+void APIENTRY glTexParameterIiv(GLenum target, GLenum p, const GLint* v) { glTexParameteri(target, p, v[0]); }
+void APIENTRY glTexParameterIuiv(GLenum target, GLenum p, const GLuint* v) { glTexParameteri(target, p, (GLint)v[0]); }
+
+static int fgl_tex_query(GLenum target, GLenum p, float* o)
+{
+    fgl_ctx* c = fgl_cur();
+    fgl_tex* t = c && target == GL_TEXTURE_2D && FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 1) : NULL;
+    if (!t) {
+        if (c) fgl_error(target == GL_TEXTURE_2D ? GL_INVALID_OPERATION : GL_INVALID_ENUM);
+        return 0;
+    }
+    switch (p) {
+    case GL_TEXTURE_MIN_FILTER: o[0] = (float)t->min_filter; return 1;
+    case GL_TEXTURE_MAG_FILTER: o[0] = (float)t->mag_filter; return 1;
+    case GL_TEXTURE_WRAP_S: o[0] = (float)t->wrap_s; return 1;
+    case GL_TEXTURE_WRAP_T: o[0] = (float)t->wrap_t; return 1;
+    case GL_TEXTURE_WRAP_R: o[0] = (float)GL_REPEAT; return 1;
+    case GL_TEXTURE_BASE_LEVEL: o[0] = (float)t->base_level; return 1;
+    case GL_TEXTURE_MAX_LEVEL: o[0] = (float)t->max_level; return 1;
+    case GL_TEXTURE_MIN_LOD: o[0] = t->min_lod; return 1;
+    case GL_TEXTURE_MAX_LOD: o[0] = t->max_lod; return 1;
+    case GL_TEXTURE_LOD_BIAS: o[0] = t->lod_bias; return 1;
+    case GL_TEXTURE_COMPARE_MODE: o[0] = (float)t->compare_mode; return 1;
+    case GL_TEXTURE_COMPARE_FUNC: o[0] = (float)t->compare_func; return 1;
+    case GL_TEXTURE_BORDER_COLOR: memcpy(o, t->border, 16); return 4;
+    case GL_TEXTURE_IMMUTABLE_FORMAT: o[0] = 0; return 1;
+    case GL_TEXTURE_SWIZZLE_R: o[0] = GL_RED; return 1;
+    case GL_TEXTURE_SWIZZLE_G: o[0] = GL_GREEN; return 1;
+    case GL_TEXTURE_SWIZZLE_B: o[0] = GL_BLUE; return 1;
+    case GL_TEXTURE_SWIZZLE_A: o[0] = GL_ALPHA; return 1;
+    default: fgl_error(GL_INVALID_ENUM); return 0;
+    }
+}
+void APIENTRY glGetTexParameterfv(GLenum target, GLenum p, GLfloat* v)
+{
+    float o[4];
+    int   n = fgl_tex_query(target, p, o);
+    for (int i = 0; i < n; i++) v[i] = o[i];
+}
+void APIENTRY glGetTexParameteriv(GLenum target, GLenum p, GLint* v)
+{
+    float o[4];
+    int   n = fgl_tex_query(target, p, o);
+    for (int i = 0; i < n; i++) v[i] = p == GL_TEXTURE_BORDER_COLOR ? (GLint)(o[i] * 2147483647.0f) : (GLint)o[i];
+}
+void APIENTRY glGetTexParameterIiv(GLenum target, GLenum p, GLint* v) { glGetTexParameteriv(target, p, v); }
+void APIENTRY glGetTexParameterIuiv(GLenum target, GLenum p, GLuint* v) { glGetTexParameteriv(target, p, (GLint*)v); }
+
+void APIENTRY glGetTexLevelParameteriv(GLenum target, GLint level, GLenum p, GLint* v)
+{
+    FGL_CTX_OR_RETURN(c);
+    fgl_tex* t = target == GL_TEXTURE_2D && FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 1) : NULL;
+    if (!t) {
+        if (target != GL_TEXTURE_2D && target != GL_PROXY_TEXTURE_2D) fgl_error(GL_INVALID_ENUM);
+        else *v = 0;
+        return;
+    }
+    const fm_surface* s = t->level0 ? t->level0 : t->depth;
+    int w = s ? s->width >> level : 0, h = s ? s->height >> level : 0;
+    if (s && level > 0) w = w < 1 ? 1 : w, h = h < 1 ? 1 : h;
+    int dep = t->depth != NULL, d24 = dep && t->depth->format == FM_FORMAT_D24S8;
+    switch (p) {
+    case GL_TEXTURE_WIDTH: *v = w; break;
+    case GL_TEXTURE_HEIGHT: *v = h; break;
+    case GL_TEXTURE_DEPTH: *v = s ? 1 : 0; break;
+    case GL_TEXTURE_INTERNAL_FORMAT: *v = (GLint)t->ifmt; break;
+    case GL_TEXTURE_RED_SIZE: case GL_TEXTURE_GREEN_SIZE: case GL_TEXTURE_BLUE_SIZE: case GL_TEXTURE_ALPHA_SIZE:
+        *v = s && !dep ? 8 : 0;
+        break;
+    case GL_TEXTURE_DEPTH_SIZE: *v = !dep ? 0 : (t->depth->format == FM_FORMAT_D16 ? 16 : (d24 ? 24 : 32)); break;
+    case GL_TEXTURE_STENCIL_SIZE: *v = d24 ? 8 : 0; break;
+    case GL_TEXTURE_COMPRESSED: *v = 0; break;
+    case GL_TEXTURE_SAMPLES: *v = 0; break;
+    case GL_TEXTURE_FIXED_SAMPLE_LOCATIONS: *v = 1; break;
+    case GL_TEXTURE_RED_TYPE: case GL_TEXTURE_GREEN_TYPE: case GL_TEXTURE_BLUE_TYPE: case GL_TEXTURE_ALPHA_TYPE:
+        *v = s && !dep ? GL_UNSIGNED_NORMALIZED : GL_NONE;
+        break;
+    case GL_TEXTURE_DEPTH_TYPE: *v = !dep ? GL_NONE : (t->depth->format == FM_FORMAT_D32F ? GL_FLOAT : GL_UNSIGNED_NORMALIZED); break;
+    default: fgl_error(GL_INVALID_ENUM); break;
+    }
+}
+void APIENTRY glGetTexLevelParameterfv(GLenum target, GLint level, GLenum p, GLfloat* v)
+{
+    GLint i = 0;
+    glGetTexLevelParameteriv(target, level, p, &i);
+    *v = (GLfloat)i;
+}
+
+/* level 0 back to client memory (pack alignment): RGBA / BGRA / RGB / BGR bytes or floats */
+void APIENTRY glGetTexImage(GLenum target, GLint level, GLenum fmt, GLenum type, void* out)
+{
+    FGL_CTX_OR_RETURN(c);
+    fgl_tex* t = target == GL_TEXTURE_2D && FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 0) : NULL;
+    if (!t || !t->level0) return;
+    if (level != 0) {
+        fgl_unimplemented("glGetTexImage (levels other than 0)");
+        return;
+    }
+    int comps = fmt == GL_RGBA || fmt == GL_BGRA ? 4 : (fmt == GL_RGB || fmt == GL_BGR ? 3 : 0);
+    if (!comps || (type != GL_UNSIGNED_BYTE && type != GL_FLOAT)) {
+        fgl_unimplemented("glGetTexImage (formats other than RGB(A) / BGR(A), types other than unsigned byte / float)");
+        return;
+    }
+    if (t->rendered) fgl_flush(c);
+    const fm_surface* s     = t->level0;
+    size_t            esz   = type == GL_FLOAT ? 4 : 1;
+    size_t            stride = ((size_t)s->width * (size_t)comps * esz + (size_t)c->pack_align - 1) / (size_t)c->pack_align * (size_t)c->pack_align;
+    for (int y = 0; y < s->height; y++) {
+        const uint32_t* r = fm_surface_row32(s, y);
+        uint8_t*        d = (uint8_t*)out + (size_t)y * stride;
+        for (int x = 0; x < s->width; x++) {
+            uint8_t ch[4] = { (uint8_t)(r[x] >> 16), (uint8_t)(r[x] >> 8), (uint8_t)r[x], (uint8_t)(r[x] >> 24) };
+            if (fmt == GL_BGRA || fmt == GL_BGR) {
+                uint8_t tmp = ch[0];
+                ch[0] = ch[2], ch[2] = tmp;
+            }
+            for (int k = 0; k < comps; k++) {
+                if (type == GL_FLOAT) ((float*)d)[(size_t)x * (size_t)comps + (size_t)k] = (float)ch[k] / 255.0f;
+                else d[(size_t)x * (size_t)comps + (size_t)k] = ch[k];
+            }
+        }
+    }
+}
+
+/* copies from the read framebuffer into level 0 */
+void APIENTRY glCopyTexSubImage2D(GLenum target, GLint level, GLint xo, GLint yo, GLint x, GLint y, GLsizei w, GLsizei h)
+{
+    FGL_CTX_OR_RETURN(c);
+    fgl_tex* t = target == GL_TEXTURE_2D && FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 0) : NULL;
+    if (!t || !t->level0) {
+        fgl_error(GL_INVALID_OPERATION);
+        return;
+    }
+    if (level != 0) return; /* mipmaps come from level 0 */
+    fgl_flush(c);
+    fm_surface* src = fgl_read_color(c);
+    if (!src) {
+        fgl_error(GL_INVALID_OPERATION);
+        return;
+    }
+    for (int r = 0; r < h; r++) {
+        int sy = y + r, dy = yo + r;
+        if (dy < 0 || dy >= t->level0->height) continue;
+        uint32_t* d = fm_surface_row32(t->level0, dy);
+        for (int i = 0; i < w; i++) {
+            int sx = x + i, dx = xo + i;
+            if (dx < 0 || dx >= t->level0->width) continue;
+            d[dx] = sx >= 0 && sy >= 0 && sx < src->width && sy < src->height ? fm_surface_row32(src, sy)[sx] : 0;
+        }
+    }
+    fm3d_texture_release(t->tex);
+    t->tex = NULL;
+}
+
+void APIENTRY glCopyTexImage2D(GLenum target, GLint level, GLenum ifmt, GLint x, GLint y, GLsizei w, GLsizei h, GLint border)
+{
+    FGL_CTX_OR_RETURN(c);
+    if (level != 0) return;
+    glTexImage2D(target, level, (GLint)ifmt, w, h, border, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glCopyTexSubImage2D(target, level, 0, 0, x, y, w, h);
+}
 
 void APIENTRY glTexEnvi(GLenum target, GLenum p, GLint v)
 {

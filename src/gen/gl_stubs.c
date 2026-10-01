@@ -246,19 +246,6 @@ void APIENTRY glCopyTexImage1D(GLenum target, GLint level, GLenum internalFormat
     fgl_unimplemented("glCopyTexImage1D");
 }
 
-void APIENTRY glCopyTexImage2D(GLenum target, GLint level, GLenum internalFormat, GLint x, GLint y, GLsizei width, GLsizei height, GLint border)
-{
-    (void)target;
-    (void)level;
-    (void)internalFormat;
-    (void)x;
-    (void)y;
-    (void)width;
-    (void)height;
-    (void)border;
-    fgl_unimplemented("glCopyTexImage2D");
-}
-
 void APIENTRY glCopyTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLint x, GLint y, GLsizei width)
 {
     (void)target;
@@ -268,19 +255,6 @@ void APIENTRY glCopyTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLi
     (void)y;
     (void)width;
     fgl_unimplemented("glCopyTexSubImage1D");
-}
-
-void APIENTRY glCopyTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint x, GLint y, GLsizei width, GLsizei height)
-{
-    (void)target;
-    (void)level;
-    (void)xoffset;
-    (void)yoffset;
-    (void)x;
-    (void)y;
-    (void)width;
-    (void)height;
-    fgl_unimplemented("glCopyTexSubImage2D");
 }
 
 void APIENTRY glDrawPixels(GLsizei width, GLsizei height, GLenum format, GLenum type, const void *pixels)
@@ -566,50 +540,6 @@ void APIENTRY glGetTexGeniv(GLenum coord, GLenum pname, GLint *params)
     fgl_unimplemented("glGetTexGeniv");
 }
 
-void APIENTRY glGetTexImage(GLenum target, GLint level, GLenum format, GLenum type, void *pixels)
-{
-    (void)target;
-    (void)level;
-    (void)format;
-    (void)type;
-    (void)pixels;
-    fgl_unimplemented("glGetTexImage");
-}
-
-void APIENTRY glGetTexLevelParameterfv(GLenum target, GLint level, GLenum pname, GLfloat *params)
-{
-    (void)target;
-    (void)level;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetTexLevelParameterfv");
-}
-
-void APIENTRY glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname, GLint *params)
-{
-    (void)target;
-    (void)level;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetTexLevelParameteriv");
-}
-
-void APIENTRY glGetTexParameterfv(GLenum target, GLenum pname, GLfloat *params)
-{
-    (void)target;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetTexParameterfv");
-}
-
-void APIENTRY glGetTexParameteriv(GLenum target, GLenum pname, GLint *params)
-{
-    (void)target;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetTexParameteriv");
-}
-
 void APIENTRY glIndexMask(GLuint mask)
 {
     (void)mask;
@@ -711,12 +641,6 @@ void APIENTRY glLineStipple(GLint factor, GLushort pattern)
     fgl_unimplemented("glLineStipple");
 }
 
-void APIENTRY glLineWidth(GLfloat width)
-{
-    (void)width;
-    fgl_unimplemented("glLineWidth");
-}
-
 void APIENTRY glListBase(GLuint base)
 {
     (void)base;
@@ -727,12 +651,6 @@ void APIENTRY glLoadName(GLuint name)
 {
     (void)name;
     fgl_unimplemented("glLoadName");
-}
-
-void APIENTRY glLogicOp(GLenum opcode)
-{
-    (void)opcode;
-    fgl_unimplemented("glLogicOp");
 }
 
 void APIENTRY glMap1d(GLenum target, GLdouble u1, GLdouble u2, GLint stride, GLint order, const GLdouble *points)
@@ -911,13 +829,6 @@ void APIENTRY glPixelMapusv(GLenum map, GLsizei mapsize, const GLushort *values)
     fgl_unimplemented("glPixelMapusv");
 }
 
-void APIENTRY glPixelStoref(GLenum pname, GLfloat param)
-{
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glPixelStoref");
-}
-
 void APIENTRY glPixelTransferf(GLenum pname, GLfloat param)
 {
     (void)pname;
@@ -937,12 +848,6 @@ void APIENTRY glPixelZoom(GLfloat xfactor, GLfloat yfactor)
     (void)xfactor;
     (void)yfactor;
     fgl_unimplemented("glPixelZoom");
-}
-
-void APIENTRY glPointSize(GLfloat size)
-{
-    (void)size;
-    fgl_unimplemented("glPointSize");
 }
 
 void APIENTRY glPolygonStipple(const GLubyte *mask)
@@ -1218,28 +1123,6 @@ void APIENTRY glSelectBuffer(GLsizei size, GLuint *buffer)
     (void)size;
     (void)buffer;
     fgl_unimplemented("glSelectBuffer");
-}
-
-void APIENTRY glStencilFunc(GLenum func, GLint ref, GLuint mask)
-{
-    (void)func;
-    (void)ref;
-    (void)mask;
-    fgl_unimplemented("glStencilFunc");
-}
-
-void APIENTRY glStencilMask(GLuint mask)
-{
-    (void)mask;
-    fgl_unimplemented("glStencilMask");
-}
-
-void APIENTRY glStencilOp(GLenum fail, GLenum zfail, GLenum zpass)
-{
-    (void)fail;
-    (void)zfail;
-    (void)zpass;
-    fgl_unimplemented("glStencilOp");
 }
 
 void APIENTRY glTexCoord1d(GLdouble s)
@@ -1639,13 +1522,6 @@ void APIENTRY glCopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLi
     fgl_unimplemented("glCopyTexSubImage3D");
 }
 
-void APIENTRY glSampleCoverage(GLfloat value, GLboolean invert)
-{
-    (void)value;
-    (void)invert;
-    fgl_unimplemented("glSampleCoverage");
-}
-
 void APIENTRY glCompressedTexImage3D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data)
 {
     (void)target;
@@ -1735,92 +1611,6 @@ void APIENTRY glGetCompressedTexImage(GLenum target, GLint level, void *img)
     fgl_unimplemented("glGetCompressedTexImage");
 }
 
-void APIENTRY glPointParameterf(GLenum pname, GLfloat param)
-{
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glPointParameterf");
-}
-
-void APIENTRY glPointParameterfv(GLenum pname, const GLfloat *params)
-{
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glPointParameterfv");
-}
-
-void APIENTRY glPointParameteri(GLenum pname, GLint param)
-{
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glPointParameteri");
-}
-
-void APIENTRY glPointParameteriv(GLenum pname, const GLint *params)
-{
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glPointParameteriv");
-}
-
-void APIENTRY glGenQueries(GLsizei n, GLuint *ids)
-{
-    (void)n;
-    (void)ids;
-    fgl_unimplemented("glGenQueries");
-}
-
-void APIENTRY glDeleteQueries(GLsizei n, const GLuint *ids)
-{
-    (void)n;
-    (void)ids;
-    fgl_unimplemented("glDeleteQueries");
-}
-
-GLboolean APIENTRY glIsQuery(GLuint id)
-{
-    (void)id;
-    fgl_unimplemented("glIsQuery");
-    return (GLboolean)0;
-}
-
-void APIENTRY glBeginQuery(GLenum target, GLuint id)
-{
-    (void)target;
-    (void)id;
-    fgl_unimplemented("glBeginQuery");
-}
-
-void APIENTRY glEndQuery(GLenum target)
-{
-    (void)target;
-    fgl_unimplemented("glEndQuery");
-}
-
-void APIENTRY glGetQueryiv(GLenum target, GLenum pname, GLint *params)
-{
-    (void)target;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetQueryiv");
-}
-
-void APIENTRY glGetQueryObjectiv(GLuint id, GLenum pname, GLint *params)
-{
-    (void)id;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetQueryObjectiv");
-}
-
-void APIENTRY glGetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params)
-{
-    (void)id;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetQueryObjectuiv");
-}
-
 void APIENTRY glGetBufferPointerv(GLenum target, GLenum pname, void **params)
 {
     (void)target;
@@ -1829,312 +1619,12 @@ void APIENTRY glGetBufferPointerv(GLenum target, GLenum pname, void **params)
     fgl_unimplemented("glGetBufferPointerv");
 }
 
-void APIENTRY glStencilOpSeparate(GLenum face, GLenum sfail, GLenum dpfail, GLenum dppass)
-{
-    (void)face;
-    (void)sfail;
-    (void)dpfail;
-    (void)dppass;
-    fgl_unimplemented("glStencilOpSeparate");
-}
-
-void APIENTRY glStencilFuncSeparate(GLenum face, GLenum func, GLint ref, GLuint mask)
-{
-    (void)face;
-    (void)func;
-    (void)ref;
-    (void)mask;
-    fgl_unimplemented("glStencilFuncSeparate");
-}
-
-void APIENTRY glStencilMaskSeparate(GLenum face, GLuint mask)
-{
-    (void)face;
-    (void)mask;
-    fgl_unimplemented("glStencilMaskSeparate");
-}
-
 void APIENTRY glGetUniformiv(GLuint program, GLint location, GLint *params)
 {
     (void)program;
     (void)location;
     (void)params;
     fgl_unimplemented("glGetUniformiv");
-}
-
-void APIENTRY glGetVertexAttribdv(GLuint index, GLenum pname, GLdouble *params)
-{
-    (void)index;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetVertexAttribdv");
-}
-
-void APIENTRY glGetVertexAttribfv(GLuint index, GLenum pname, GLfloat *params)
-{
-    (void)index;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetVertexAttribfv");
-}
-
-void APIENTRY glVertexAttrib1d(GLuint index, GLdouble x)
-{
-    (void)index;
-    (void)x;
-    fgl_unimplemented("glVertexAttrib1d");
-}
-
-void APIENTRY glVertexAttrib1dv(GLuint index, const GLdouble *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib1dv");
-}
-
-void APIENTRY glVertexAttrib1s(GLuint index, GLshort x)
-{
-    (void)index;
-    (void)x;
-    fgl_unimplemented("glVertexAttrib1s");
-}
-
-void APIENTRY glVertexAttrib1sv(GLuint index, const GLshort *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib1sv");
-}
-
-void APIENTRY glVertexAttrib2d(GLuint index, GLdouble x, GLdouble y)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    fgl_unimplemented("glVertexAttrib2d");
-}
-
-void APIENTRY glVertexAttrib2dv(GLuint index, const GLdouble *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib2dv");
-}
-
-void APIENTRY glVertexAttrib2s(GLuint index, GLshort x, GLshort y)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    fgl_unimplemented("glVertexAttrib2s");
-}
-
-void APIENTRY glVertexAttrib2sv(GLuint index, const GLshort *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib2sv");
-}
-
-void APIENTRY glVertexAttrib3d(GLuint index, GLdouble x, GLdouble y, GLdouble z)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    (void)z;
-    fgl_unimplemented("glVertexAttrib3d");
-}
-
-void APIENTRY glVertexAttrib3dv(GLuint index, const GLdouble *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib3dv");
-}
-
-void APIENTRY glVertexAttrib3s(GLuint index, GLshort x, GLshort y, GLshort z)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    (void)z;
-    fgl_unimplemented("glVertexAttrib3s");
-}
-
-void APIENTRY glVertexAttrib3sv(GLuint index, const GLshort *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib3sv");
-}
-
-void APIENTRY glVertexAttrib4Nbv(GLuint index, const GLbyte *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4Nbv");
-}
-
-void APIENTRY glVertexAttrib4Niv(GLuint index, const GLint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4Niv");
-}
-
-void APIENTRY glVertexAttrib4Nsv(GLuint index, const GLshort *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4Nsv");
-}
-
-void APIENTRY glVertexAttrib4Nub(GLuint index, GLubyte x, GLubyte y, GLubyte z, GLubyte w)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    (void)z;
-    (void)w;
-    fgl_unimplemented("glVertexAttrib4Nub");
-}
-
-void APIENTRY glVertexAttrib4Nubv(GLuint index, const GLubyte *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4Nubv");
-}
-
-void APIENTRY glVertexAttrib4Nuiv(GLuint index, const GLuint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4Nuiv");
-}
-
-void APIENTRY glVertexAttrib4Nusv(GLuint index, const GLushort *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4Nusv");
-}
-
-void APIENTRY glVertexAttrib4bv(GLuint index, const GLbyte *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4bv");
-}
-
-void APIENTRY glVertexAttrib4d(GLuint index, GLdouble x, GLdouble y, GLdouble z, GLdouble w)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    (void)z;
-    (void)w;
-    fgl_unimplemented("glVertexAttrib4d");
-}
-
-void APIENTRY glVertexAttrib4dv(GLuint index, const GLdouble *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4dv");
-}
-
-void APIENTRY glVertexAttrib4iv(GLuint index, const GLint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4iv");
-}
-
-void APIENTRY glVertexAttrib4s(GLuint index, GLshort x, GLshort y, GLshort z, GLshort w)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    (void)z;
-    (void)w;
-    fgl_unimplemented("glVertexAttrib4s");
-}
-
-void APIENTRY glVertexAttrib4sv(GLuint index, const GLshort *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4sv");
-}
-
-void APIENTRY glVertexAttrib4ubv(GLuint index, const GLubyte *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4ubv");
-}
-
-void APIENTRY glVertexAttrib4uiv(GLuint index, const GLuint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4uiv");
-}
-
-void APIENTRY glVertexAttrib4usv(GLuint index, const GLushort *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttrib4usv");
-}
-
-void APIENTRY glColorMaski(GLuint index, GLboolean r, GLboolean g, GLboolean b, GLboolean a)
-{
-    (void)index;
-    (void)r;
-    (void)g;
-    (void)b;
-    (void)a;
-    fgl_unimplemented("glColorMaski");
-}
-
-void APIENTRY glGetBooleani_v(GLenum target, GLuint index, GLboolean *data)
-{
-    (void)target;
-    (void)index;
-    (void)data;
-    fgl_unimplemented("glGetBooleani_v");
-}
-
-void APIENTRY glGetIntegeri_v(GLenum target, GLuint index, GLint *data)
-{
-    (void)target;
-    (void)index;
-    (void)data;
-    fgl_unimplemented("glGetIntegeri_v");
-}
-
-void APIENTRY glEnablei(GLenum target, GLuint index)
-{
-    (void)target;
-    (void)index;
-    fgl_unimplemented("glEnablei");
-}
-
-void APIENTRY glDisablei(GLenum target, GLuint index)
-{
-    (void)target;
-    (void)index;
-    fgl_unimplemented("glDisablei");
-}
-
-GLboolean APIENTRY glIsEnabledi(GLenum target, GLuint index)
-{
-    (void)target;
-    (void)index;
-    fgl_unimplemented("glIsEnabledi");
-    return (GLboolean)0;
 }
 
 void APIENTRY glBeginTransformFeedback(GLenum primitiveMode)
@@ -2169,264 +1659,12 @@ void APIENTRY glGetTransformFeedbackVarying(GLuint program, GLuint index, GLsize
     fgl_unimplemented("glGetTransformFeedbackVarying");
 }
 
-void APIENTRY glClampColor(GLenum target, GLenum clamp)
-{
-    (void)target;
-    (void)clamp;
-    fgl_unimplemented("glClampColor");
-}
-
-void APIENTRY glBeginConditionalRender(GLuint id, GLenum mode)
-{
-    (void)id;
-    (void)mode;
-    fgl_unimplemented("glBeginConditionalRender");
-}
-
-void APIENTRY glEndConditionalRender(void)
-{
-    fgl_unimplemented("glEndConditionalRender");
-}
-
-void APIENTRY glGetVertexAttribIiv(GLuint index, GLenum pname, GLint *params)
-{
-    (void)index;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetVertexAttribIiv");
-}
-
-void APIENTRY glGetVertexAttribIuiv(GLuint index, GLenum pname, GLuint *params)
-{
-    (void)index;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetVertexAttribIuiv");
-}
-
-void APIENTRY glVertexAttribI1i(GLuint index, GLint x)
-{
-    (void)index;
-    (void)x;
-    fgl_unimplemented("glVertexAttribI1i");
-}
-
-void APIENTRY glVertexAttribI2i(GLuint index, GLint x, GLint y)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    fgl_unimplemented("glVertexAttribI2i");
-}
-
-void APIENTRY glVertexAttribI3i(GLuint index, GLint x, GLint y, GLint z)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    (void)z;
-    fgl_unimplemented("glVertexAttribI3i");
-}
-
-void APIENTRY glVertexAttribI4i(GLuint index, GLint x, GLint y, GLint z, GLint w)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    (void)z;
-    (void)w;
-    fgl_unimplemented("glVertexAttribI4i");
-}
-
-void APIENTRY glVertexAttribI1ui(GLuint index, GLuint x)
-{
-    (void)index;
-    (void)x;
-    fgl_unimplemented("glVertexAttribI1ui");
-}
-
-void APIENTRY glVertexAttribI2ui(GLuint index, GLuint x, GLuint y)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    fgl_unimplemented("glVertexAttribI2ui");
-}
-
-void APIENTRY glVertexAttribI3ui(GLuint index, GLuint x, GLuint y, GLuint z)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    (void)z;
-    fgl_unimplemented("glVertexAttribI3ui");
-}
-
-void APIENTRY glVertexAttribI4ui(GLuint index, GLuint x, GLuint y, GLuint z, GLuint w)
-{
-    (void)index;
-    (void)x;
-    (void)y;
-    (void)z;
-    (void)w;
-    fgl_unimplemented("glVertexAttribI4ui");
-}
-
-void APIENTRY glVertexAttribI1iv(GLuint index, const GLint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI1iv");
-}
-
-void APIENTRY glVertexAttribI2iv(GLuint index, const GLint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI2iv");
-}
-
-void APIENTRY glVertexAttribI3iv(GLuint index, const GLint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI3iv");
-}
-
-void APIENTRY glVertexAttribI4iv(GLuint index, const GLint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI4iv");
-}
-
-void APIENTRY glVertexAttribI1uiv(GLuint index, const GLuint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI1uiv");
-}
-
-void APIENTRY glVertexAttribI2uiv(GLuint index, const GLuint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI2uiv");
-}
-
-void APIENTRY glVertexAttribI3uiv(GLuint index, const GLuint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI3uiv");
-}
-
-void APIENTRY glVertexAttribI4uiv(GLuint index, const GLuint *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI4uiv");
-}
-
-void APIENTRY glVertexAttribI4bv(GLuint index, const GLbyte *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI4bv");
-}
-
-void APIENTRY glVertexAttribI4sv(GLuint index, const GLshort *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI4sv");
-}
-
-void APIENTRY glVertexAttribI4ubv(GLuint index, const GLubyte *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI4ubv");
-}
-
-void APIENTRY glVertexAttribI4usv(GLuint index, const GLushort *v)
-{
-    (void)index;
-    (void)v;
-    fgl_unimplemented("glVertexAttribI4usv");
-}
-
 void APIENTRY glGetUniformuiv(GLuint program, GLint location, GLuint *params)
 {
     (void)program;
     (void)location;
     (void)params;
     fgl_unimplemented("glGetUniformuiv");
-}
-
-void APIENTRY glTexParameterIiv(GLenum target, GLenum pname, const GLint *params)
-{
-    (void)target;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glTexParameterIiv");
-}
-
-void APIENTRY glTexParameterIuiv(GLenum target, GLenum pname, const GLuint *params)
-{
-    (void)target;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glTexParameterIuiv");
-}
-
-void APIENTRY glGetTexParameterIiv(GLenum target, GLenum pname, GLint *params)
-{
-    (void)target;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetTexParameterIiv");
-}
-
-void APIENTRY glGetTexParameterIuiv(GLenum target, GLenum pname, GLuint *params)
-{
-    (void)target;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetTexParameterIuiv");
-}
-
-void APIENTRY glClearBufferiv(GLenum buffer, GLint drawbuffer, const GLint *value)
-{
-    (void)buffer;
-    (void)drawbuffer;
-    (void)value;
-    fgl_unimplemented("glClearBufferiv");
-}
-
-void APIENTRY glClearBufferuiv(GLenum buffer, GLint drawbuffer, const GLuint *value)
-{
-    (void)buffer;
-    (void)drawbuffer;
-    (void)value;
-    fgl_unimplemented("glClearBufferuiv");
-}
-
-void APIENTRY glClearBufferfv(GLenum buffer, GLint drawbuffer, const GLfloat *value)
-{
-    (void)buffer;
-    (void)drawbuffer;
-    (void)value;
-    fgl_unimplemented("glClearBufferfv");
-}
-
-void APIENTRY glClearBufferfi(GLenum buffer, GLint drawbuffer, GLfloat depth, GLint stencil)
-{
-    (void)buffer;
-    (void)drawbuffer;
-    (void)depth;
-    (void)stencil;
-    fgl_unimplemented("glClearBufferfi");
 }
 
 void APIENTRY glFramebufferTexture1D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
@@ -2466,12 +1704,6 @@ void APIENTRY glTexBuffer(GLenum target, GLenum internalformat, GLuint buffer)
     (void)internalformat;
     (void)buffer;
     fgl_unimplemented("glTexBuffer");
-}
-
-void APIENTRY glPrimitiveRestartIndex(GLuint index)
-{
-    (void)index;
-    fgl_unimplemented("glPrimitiveRestartIndex");
 }
 
 void APIENTRY glGetUniformIndices(GLuint program, GLsizei uniformCount, const GLchar *const*uniformNames, GLuint *uniformIndices)
@@ -2514,75 +1746,6 @@ void APIENTRY glMultiDrawElementsBaseVertex(GLenum mode, const GLsizei *count, G
     fgl_unimplemented("glMultiDrawElementsBaseVertex");
 }
 
-void APIENTRY glProvokingVertex(GLenum mode)
-{
-    (void)mode;
-    fgl_unimplemented("glProvokingVertex");
-}
-
-GLsync APIENTRY glFenceSync(GLenum condition, GLbitfield flags)
-{
-    (void)condition;
-    (void)flags;
-    fgl_unimplemented("glFenceSync");
-    return (GLsync)0;
-}
-
-GLboolean APIENTRY glIsSync(GLsync sync)
-{
-    (void)sync;
-    fgl_unimplemented("glIsSync");
-    return (GLboolean)0;
-}
-
-void APIENTRY glDeleteSync(GLsync sync)
-{
-    (void)sync;
-    fgl_unimplemented("glDeleteSync");
-}
-
-GLenum APIENTRY glClientWaitSync(GLsync sync, GLbitfield flags, GLuint64 timeout)
-{
-    (void)sync;
-    (void)flags;
-    (void)timeout;
-    fgl_unimplemented("glClientWaitSync");
-    return (GLenum)0;
-}
-
-void APIENTRY glWaitSync(GLsync sync, GLbitfield flags, GLuint64 timeout)
-{
-    (void)sync;
-    (void)flags;
-    (void)timeout;
-    fgl_unimplemented("glWaitSync");
-}
-
-void APIENTRY glGetInteger64v(GLenum pname, GLint64 *data)
-{
-    (void)pname;
-    (void)data;
-    fgl_unimplemented("glGetInteger64v");
-}
-
-void APIENTRY glGetSynciv(GLsync sync, GLenum pname, GLsizei count, GLsizei *length, GLint *values)
-{
-    (void)sync;
-    (void)pname;
-    (void)count;
-    (void)length;
-    (void)values;
-    fgl_unimplemented("glGetSynciv");
-}
-
-void APIENTRY glGetInteger64i_v(GLenum target, GLuint index, GLint64 *data)
-{
-    (void)target;
-    (void)index;
-    (void)data;
-    fgl_unimplemented("glGetInteger64i_v");
-}
-
 void APIENTRY glGetBufferParameteri64v(GLenum target, GLenum pname, GLint64 *params)
 {
     (void)target;
@@ -2614,21 +1777,6 @@ void APIENTRY glTexImage3DMultisample(GLenum target, GLsizei samples, GLenum int
     fgl_unimplemented("glTexImage3DMultisample");
 }
 
-void APIENTRY glGetMultisamplefv(GLenum pname, GLuint index, GLfloat *val)
-{
-    (void)pname;
-    (void)index;
-    (void)val;
-    fgl_unimplemented("glGetMultisamplefv");
-}
-
-void APIENTRY glSampleMaski(GLuint maskNumber, GLbitfield mask)
-{
-    (void)maskNumber;
-    (void)mask;
-    fgl_unimplemented("glSampleMaski");
-}
-
 void APIENTRY glBindFragDataLocationIndexed(GLuint program, GLuint colorNumber, GLuint index, const GLchar *name)
 {
     (void)program;
@@ -2644,208 +1792,5 @@ GLint APIENTRY glGetFragDataIndex(GLuint program, const GLchar *name)
     (void)name;
     fgl_unimplemented("glGetFragDataIndex");
     return (GLint)0;
-}
-
-void APIENTRY glGenSamplers(GLsizei count, GLuint *samplers)
-{
-    (void)count;
-    (void)samplers;
-    fgl_unimplemented("glGenSamplers");
-}
-
-void APIENTRY glDeleteSamplers(GLsizei count, const GLuint *samplers)
-{
-    (void)count;
-    (void)samplers;
-    fgl_unimplemented("glDeleteSamplers");
-}
-
-GLboolean APIENTRY glIsSampler(GLuint sampler)
-{
-    (void)sampler;
-    fgl_unimplemented("glIsSampler");
-    return (GLboolean)0;
-}
-
-void APIENTRY glBindSampler(GLuint unit, GLuint sampler)
-{
-    (void)unit;
-    (void)sampler;
-    fgl_unimplemented("glBindSampler");
-}
-
-void APIENTRY glSamplerParameteri(GLuint sampler, GLenum pname, GLint param)
-{
-    (void)sampler;
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glSamplerParameteri");
-}
-
-void APIENTRY glSamplerParameteriv(GLuint sampler, GLenum pname, const GLint *param)
-{
-    (void)sampler;
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glSamplerParameteriv");
-}
-
-void APIENTRY glSamplerParameterf(GLuint sampler, GLenum pname, GLfloat param)
-{
-    (void)sampler;
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glSamplerParameterf");
-}
-
-void APIENTRY glSamplerParameterfv(GLuint sampler, GLenum pname, const GLfloat *param)
-{
-    (void)sampler;
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glSamplerParameterfv");
-}
-
-void APIENTRY glSamplerParameterIiv(GLuint sampler, GLenum pname, const GLint *param)
-{
-    (void)sampler;
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glSamplerParameterIiv");
-}
-
-void APIENTRY glSamplerParameterIuiv(GLuint sampler, GLenum pname, const GLuint *param)
-{
-    (void)sampler;
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glSamplerParameterIuiv");
-}
-
-void APIENTRY glGetSamplerParameteriv(GLuint sampler, GLenum pname, GLint *params)
-{
-    (void)sampler;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetSamplerParameteriv");
-}
-
-void APIENTRY glGetSamplerParameterIiv(GLuint sampler, GLenum pname, GLint *params)
-{
-    (void)sampler;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetSamplerParameterIiv");
-}
-
-void APIENTRY glGetSamplerParameterfv(GLuint sampler, GLenum pname, GLfloat *params)
-{
-    (void)sampler;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetSamplerParameterfv");
-}
-
-void APIENTRY glGetSamplerParameterIuiv(GLuint sampler, GLenum pname, GLuint *params)
-{
-    (void)sampler;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetSamplerParameterIuiv");
-}
-
-void APIENTRY glQueryCounter(GLuint id, GLenum target)
-{
-    (void)id;
-    (void)target;
-    fgl_unimplemented("glQueryCounter");
-}
-
-void APIENTRY glGetQueryObjecti64v(GLuint id, GLenum pname, GLint64 *params)
-{
-    (void)id;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetQueryObjecti64v");
-}
-
-void APIENTRY glGetQueryObjectui64v(GLuint id, GLenum pname, GLuint64 *params)
-{
-    (void)id;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetQueryObjectui64v");
-}
-
-void APIENTRY glVertexAttribP1ui(GLuint index, GLenum type, GLboolean normalized, GLuint value)
-{
-    (void)index;
-    (void)type;
-    (void)normalized;
-    (void)value;
-    fgl_unimplemented("glVertexAttribP1ui");
-}
-
-void APIENTRY glVertexAttribP1uiv(GLuint index, GLenum type, GLboolean normalized, const GLuint *value)
-{
-    (void)index;
-    (void)type;
-    (void)normalized;
-    (void)value;
-    fgl_unimplemented("glVertexAttribP1uiv");
-}
-
-void APIENTRY glVertexAttribP2ui(GLuint index, GLenum type, GLboolean normalized, GLuint value)
-{
-    (void)index;
-    (void)type;
-    (void)normalized;
-    (void)value;
-    fgl_unimplemented("glVertexAttribP2ui");
-}
-
-void APIENTRY glVertexAttribP2uiv(GLuint index, GLenum type, GLboolean normalized, const GLuint *value)
-{
-    (void)index;
-    (void)type;
-    (void)normalized;
-    (void)value;
-    fgl_unimplemented("glVertexAttribP2uiv");
-}
-
-void APIENTRY glVertexAttribP3ui(GLuint index, GLenum type, GLboolean normalized, GLuint value)
-{
-    (void)index;
-    (void)type;
-    (void)normalized;
-    (void)value;
-    fgl_unimplemented("glVertexAttribP3ui");
-}
-
-void APIENTRY glVertexAttribP3uiv(GLuint index, GLenum type, GLboolean normalized, const GLuint *value)
-{
-    (void)index;
-    (void)type;
-    (void)normalized;
-    (void)value;
-    fgl_unimplemented("glVertexAttribP3uiv");
-}
-
-void APIENTRY glVertexAttribP4ui(GLuint index, GLenum type, GLboolean normalized, GLuint value)
-{
-    (void)index;
-    (void)type;
-    (void)normalized;
-    (void)value;
-    fgl_unimplemented("glVertexAttribP4ui");
-}
-
-void APIENTRY glVertexAttribP4uiv(GLuint index, GLenum type, GLboolean normalized, const GLuint *value)
-{
-    (void)index;
-    (void)type;
-    (void)normalized;
-    (void)value;
-    fgl_unimplemented("glVertexAttribP4uiv");
 }
 

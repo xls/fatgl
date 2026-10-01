@@ -39,6 +39,9 @@
 #define GL_PROJECTION_MATRIX      0x0BA7
 #define GL_TEXTURE_MATRIX         0x0BA8
 #define GL_ALPHA_TEST             0x0BC0
+#define GL_ALPHA_TEST_FUNC        0x0BC1
+#define GL_ALPHA_TEST_REF         0x0BC2
+#define GL_ALIASED_POINT_SIZE_RANGE 0x846D
 #define GL_MAX_LIGHTS             0x0D31
 #define GL_MAX_MODELVIEW_STACK_DEPTH  0x0D36
 #define GL_MAX_PROJECTION_STACK_DEPTH 0x0D38
@@ -93,7 +96,8 @@ enum { FGL_MV = 0, FGL_PROJ, FGL_TEXM };
 enum {
     FGL_E_DEPTH = 1u << 0, FGL_E_CULL = 1u << 1, FGL_E_LIGHTING = 1u << 2, FGL_E_TEX2D = 1u << 3, FGL_E_BLEND = 1u << 4,
     FGL_E_ALPHA = 1u << 5, FGL_E_COLMAT = 1u << 6, FGL_E_NORMALIZE = 1u << 7, FGL_E_SCISSOR = 1u << 8,
-    FGL_E_STENCIL = 1u << 9, FGL_E_POFFSET = 1u << 10
+    FGL_E_STENCIL = 1u << 9, FGL_E_POFFSET = 1u << 10, FGL_E_RESTART = 1u << 11,
+    FGL_E_PSIZE = 1u << 12
 };
 
 typedef struct fgl_vtx { /* an immediate mode vertex: object position, current attributes */
@@ -109,6 +113,10 @@ typedef struct fgl_tex {
     int           built_mips;
     int           rendered; /* drawn into through a framebuffer since tex was built */
     GLenum        min_filter, mag_filter, wrap_s, wrap_t;
+    GLenum        ifmt; /* glTexImage2D internal format */
+    float         min_lod, max_lod, lod_bias, border[4];
+    GLenum        compare_mode, compare_func;
+    GLint         base_level, max_level;
 } fgl_tex;
 
 /* ---- GL 2.0 / 3.x objects ---- */
@@ -227,6 +235,23 @@ typedef struct fgl_fbo {
     fm_surface* dummy; /* color target of depth only framebuffers */
 } fgl_fbo;
 
+/* sampler objects (GL 3.3): override the parameters of the texture on their unit */
+typedef struct fgl_sampler {
+    GLuint name;
+    int    used;
+    GLenum min_filter, mag_filter, wrap_s, wrap_t, wrap_r;
+    float  min_lod, max_lod, lod_bias, border[4], aniso;
+    GLenum compare_mode, compare_func;
+} fgl_sampler;
+
+/* queries: occlusion (fragments reaching the fragment stage), primitives, time */
+typedef struct fgl_query {
+    GLuint   name;
+    int      used;
+    GLenum   target;
+    uint64_t start, result;
+} fgl_query;
+
 typedef struct fgl_op fgl_op; /* a recorded display list command */
 typedef struct fgl_list {
     GLuint  name;
@@ -326,6 +351,22 @@ typedef struct fgl_ctx {
     fm_surface* tgt_color; /* what the fatmap context renders into (NULL: rebind) */
     fm_surface* tgt_depth;
     fm_surface* tgt_stencil;
+    fgl_sampler* samplers;
+    int          nsamplers;
+    GLuint       unit_sampler[FGL_UNITS];
+    fgl_query*   queries;
+    int          nqueries;
+    GLuint       active_query[4]; /* samples passed / any samples / primitives generated / time elapsed */
+    struct {
+        GLenum func, sfail, dpfail, dppass;
+        GLint  ref;
+        GLuint mask, wmask;
+    } stencil[2]; /* front, back */
+    float    point_size, line_width;
+    uint8_t* builtins; /* the fgl_Builtins block of legacy GLSL programs */
+    GLenum provoking_vertex, logic_op;
+    GLuint restart_index;
+    int    restart_on; /* GL_PRIMITIVE_RESTART */
     GLuint unit_tex[FGL_UNITS]; /* GL_TEXTURE_2D binding per texture unit */
     int    active_unit;
     float  attr_value[FGL_ATTRIBS][4]; /* generic attribute values (glVertexAttrib*) */
@@ -356,7 +397,7 @@ void fgl_sync(fgl_ctx* c);
 void fgl_draw_prim(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n);
 fgl_tex* fgl_texture(fgl_ctx* c, GLuint name, int create);
 /* fatmap texture + sampler of a GL texture object (built on demand); 0 without an image */
-int fgl_texture_use(fgl_ctx* c, fgl_tex* t, fm3d_texture** tex, fm3d_sampler* s);
+int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_sampler* s);
 fgl_buf*     fgl_buffer(fgl_ctx* c, GLuint name);
 fgl_vao*     fgl_cur_vao(fgl_ctx* c);
 fgl_program* fgl_program_get(fgl_ctx* c, GLuint name);
@@ -365,6 +406,19 @@ fgl_program* fgl_program_get(fgl_ctx* c, GLuint name);
 void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenum itype, const void* indices, GLint basevertex,
                       GLsizei instances);
 fgl_list* fgl_list_get(fgl_ctx* c, GLuint name, int create);
+void      fgl_draw_program_imm(fgl_ctx* c, GLenum mode, const fgl_vtx* v, int n);
+
+/* gl_misc.c: stencil state into fatmap, glGet values kept there (0: not one), cleanup */
+void fgl_sync_stencil(fgl_ctx* c);
+/* glsl_legacy.c: legacy GLSL rewritten for glslang (NULL: no change), the fgl_Builtins block */
+char* fgl_glsl_upgrade(const char* src, GLenum stage, int ntexcoords, int* uses_builtins);
+int   fgl_glsl_texcoords(const char* src);
+int   fgl_builtins_size(void);
+void  fgl_builtins_fill(fgl_ctx* c, uint8_t* block);
+int  fgl_get_misc(fgl_ctx* c, GLenum p, double* v);
+void fgl_misc_init(fgl_ctx* c);
+void fgl_misc_free(fgl_ctx* c);
+fgl_sampler* fgl_sampler_get(fgl_ctx* c, GLuint name);
 
 /* framebuffers (gl_fbo.c): point fatmap at the draw framebuffer; surfaces
  * of the read framebuffer; forget a surface about to be destroyed */

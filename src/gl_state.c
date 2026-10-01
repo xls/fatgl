@@ -52,6 +52,7 @@ void fgl_ctx_init(fgl_ctx* c)
     c->cur_color[0] = c->cur_color[1] = c->cur_color[2] = c->cur_color[3] = 1;
     c->cur_normal[2] = 1;
     c->cur_tex[3]    = 1;
+    fgl_misc_init(c);
 }
 
 void fgl_ctx_free(fgl_ctx* c)
@@ -63,6 +64,7 @@ void fgl_ctx_free(fgl_ctx* c)
         fm_surface_destroy(c->tex[i].depth);
     }
     fgl_fbo_free(c);
+    fgl_misc_free(c);
     free(c->tex);
     for (int i = 0; i < c->nlists; i++) free(c->lists[i].ops);
     free(c->lists);
@@ -127,6 +129,8 @@ static unsigned fgl_cap_bit(GLenum cap)
     case GL_NORMALIZE: return FGL_E_NORMALIZE;
     case GL_SCISSOR_TEST: return FGL_E_SCISSOR;
     case GL_STENCIL_TEST: return FGL_E_STENCIL;
+    case GL_PRIMITIVE_RESTART: return FGL_E_RESTART;
+    case GL_PROGRAM_POINT_SIZE: return FGL_E_PSIZE;
     case GL_POLYGON_OFFSET_FILL: return FGL_E_POFFSET;
     default: return 0;
     }
@@ -385,6 +389,7 @@ void fgl_sync(fgl_ctx* c)
     fm3d_set_alpha_test(f, (c->enables & FGL_E_ALPHA) ? (fm3d_compare)(c->alpha_func - GL_NEVER) : FM3D_ALWAYS, c->alpha_ref);
     if (c->enables & FGL_E_POFFSET) fm3d_set_depth_bias(f, c->poly_factor, c->poly_units);
     else fm3d_set_depth_bias(f, 0, 0);
+    fgl_sync_stencil(c);
     fgl_bind_draw(c); /* again: depth only framebuffers turn color writes off */
 }
 
@@ -499,6 +504,8 @@ static int fgl_get_count(GLenum p, fgl_ctx* c, double* v)
         return 16;
     }
     default: {
+        int n = fgl_get_misc(c, p, v);
+        if (n) return n;
         unsigned b = fgl_cap_bit(p);
         if (b) {
             v[0] = (c->enables & b) != 0;

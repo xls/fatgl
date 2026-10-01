@@ -19,7 +19,7 @@ endif
 if get_option('fatmap') == 'source' # a checkout (e.g. a junction / symlink) at subprojects/fatmap-src
   fatmap_dep = subproject('fatmap-src', default_options : ['tests=false', 'sandbox=disabled']).get_variable('fatmap_dep')
 else
-  fatmap_dep = dependency('fatmap', version : '>=0.3.0', fallback : ['fatmap', 'fatmap_dep'])
+  fatmap_dep = dependency('fatmap', version : '>=0.4.0', fallback : ['fatmap', 'fatmap_dep'])
 endif
 # GLSL -> SPIR-V (subprojects/glslang.wrap, our meson.build)
 glslang_dep = dependency('glslang', fallback : ['glslang', 'glslang_dep'])
@@ -38,6 +38,8 @@ sources = files(
   'src/gl_shader.c',
   'src/gl_draw33.c',
   'src/gl_fbo.c',
+  'src/gl_misc.c',
+  'src/glsl_legacy.c',
   'src/gen/gl_stubs.c',
   'src/gen/gl_procs.c',
 )
@@ -59,7 +61,7 @@ opengl32 = shared_library('opengl32', sources,
 # next to fatgl's opengl32.dll (the build directory) Windows loads fatgl's
 sys_gl = cc.find_library('opengl32')
 gdi = cc.find_library('gdi32')
-foreach ex : ['triangle', 'gears', 'cube33', 'fbo33', 'blend']
+foreach ex : ['triangle', 'gears', 'cube33', 'fbo33', 'blend', 'prims', 'legacy']
   executable(ex, 'examples/' + ex + '.c',
     c_args : args,
     dependencies : [sys_gl, gdi],

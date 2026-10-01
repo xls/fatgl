@@ -103,7 +103,8 @@ void APIENTRY glEnd(void)
         return;
     }
     c->in_begin = 0;
-    fgl_draw_prim(c, c->prim, c->imm, c->nimm);
+    if (c->program) fgl_draw_program_imm(c, c->prim, c->imm, c->nimm);
+    else fgl_draw_prim(c, c->prim, c->imm, c->nimm);
 }
 
 void APIENTRY glRectf(GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2)
@@ -188,7 +189,7 @@ static void fgl_sync_fixed(fgl_ctx* c)
     fgl_tex*      t = (c->enables & FGL_E_TEX2D) && c->unit_tex[0] ? fgl_texture(c, c->unit_tex[0], 0) : NULL;
     fm3d_texture* ft = NULL;
     fm3d_sampler  s;
-    if (fgl_texture_use(c, t, &ft, &s)) {
+    if (fgl_texture_use(c, t, 0, &ft, &s)) {
         fm3d_set_texture(f, ft, &s);
         fm3d_set_texenv(f, c->tex_env == GL_REPLACE ? FM3D_TEXENV_REPLACE
                                                     : (c->tex_env == GL_DECAL ? FM3D_TEXENV_DECAL
@@ -200,6 +201,46 @@ static void fgl_sync_fixed(fgl_ctx* c)
 
 /* GL's provoking vertex for flat shading: the last vertex of each
  * triangle (the first vertex for GL_POLYGON) */
+/* GL_POINTS / GL_LINES / GL_LINE_STRIP / GL_LINE_LOOP: points or segment
+ * pairs; fatmap expands them after the vertex stage */
+static void fgl_draw_lines(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n)
+{
+    int per = prim == GL_POINTS ? 1 : 2;
+    int np  = prim == GL_POINTS ? n : (prim == GL_LINES ? n / 2 : (prim == GL_LINE_STRIP ? n - 1 : (n >= 2 ? n : 0)));
+    if (np <= 0) return;
+    fm3d_vertex* t = (fm3d_vertex*)malloc((size_t)np * (size_t)per * sizeof(fm3d_vertex));
+    if (!t) {
+        fgl_error(GL_OUT_OF_MEMORY);
+        return;
+    }
+    const fm_mat4* texm = NULL;
+    const fm_mat4* tm   = &c->mstack[FGL_TEXM][c->msp[FGL_TEXM]];
+    fm_mat4        id   = fm_mat4_identity();
+    if (memcmp(tm, &id, sizeof(id))) texm = tm;
+    int flat = c->shade_model == GL_FLAT;
+    for (int i = 0; i < np; i++) {
+        if (per == 1) {
+            fgl_fmv(&t[i], &v[i], texm);
+            continue;
+        }
+        int a = prim == GL_LINES ? 2 * i : i, b = prim == GL_LINES ? 2 * i + 1 : (i + 1) % n;
+        fgl_fmv(&t[2 * i], &v[a], texm), fgl_fmv(&t[2 * i + 1], &v[b], texm);
+        if (flat) { /* the segment's last vertex provokes */
+            t[2 * i].color = t[2 * i + 1].color;
+            t[2 * i].nx = t[2 * i + 1].nx, t[2 * i].ny = t[2 * i + 1].ny, t[2 * i].nz = t[2 * i + 1].nz;
+        }
+    }
+    fgl_sync(c);
+    fm3d_set_program(c->c3, NULL); /* fixed function */
+    fgl_sync_fixed(c);
+    fm3d_set_primitive(c->c3, per == 1 ? FM3D_PRIM_POINTS : FM3D_PRIM_LINES);
+    fm3d_set_line_width(c->c3, c->line_width);
+    fm3d_set_point_size(c->c3, c->point_size);
+    fm3d_draw(c->c3, t, np * per);
+    fm3d_set_primitive(c->c3, FM3D_PRIM_TRIANGLES);
+    free(t);
+}
+
 void fgl_draw_prim(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n)
 {
     int ntri = 0;
@@ -208,7 +249,7 @@ void fgl_draw_prim(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n)
     case GL_TRIANGLE_STRIP: case GL_TRIANGLE_FAN: case GL_POLYGON: ntri = n >= 3 ? n - 2 : 0; break;
     case GL_QUADS: ntri = (n / 4) * 2; break;
     case GL_QUAD_STRIP: ntri = n >= 4 ? ((n - 2) / 2) * 2 : 0; break;
-    case GL_POINTS: case GL_LINES: case GL_LINE_STRIP: case GL_LINE_LOOP: fgl_unimplemented("points / lines"); return;
+    case GL_POINTS: case GL_LINES: case GL_LINE_STRIP: case GL_LINE_LOOP: fgl_draw_lines(c, prim, v, n); return;
     default: fgl_error(GL_INVALID_ENUM); return;
     }
     if (!ntri) return;
