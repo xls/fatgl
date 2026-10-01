@@ -1,0 +1,266 @@
+/*
+ * fatgl - draws with a GLSL program (GL 2.0+ path). The bound vertex array's
+ * attributes (any buffer, stride, type) are gathered into the stream the
+ * fatmap program reads (shader input location L at L * 16 bytes, 4 floats
+ * or raw 32 bit integers), primitives become a triangle index list.
+ */
+#include "fgl.h"
+#include <math.h>
+
+static float fgl_half(uint16_t h)
+{
+    uint32_t s = (uint32_t)(h >> 15) << 31, e = (h >> 10) & 31, m = h & 1023, u;
+    if (e == 0) {
+        float f = (float)m * (1.0f / 16777216.0f); /* denormal: m * 2^-24 */
+        return s ? -f : f;
+    }
+    u = s | ((e == 31 ? 255 : e + 112) << 23) | (m << 13);
+    float f;
+    memcpy(&f, &u, 4);
+    return f;
+}
+
+static int fgl_tsize(GLenum t)
+{
+    switch (t) {
+    case GL_BYTE: case GL_UNSIGNED_BYTE: return 1;
+    case GL_SHORT: case GL_UNSIGNED_SHORT: case GL_HALF_FLOAT: return 2;
+    case GL_DOUBLE: return 8;
+    default: return 4;
+    }
+}
+
+/* one attribute element -> 4 words (floats, or integers for I attributes) */
+static void fgl_fetch_attr(const fgl_attrib* a, const uint8_t* p, uint32_t* out)
+{
+    float f[4] = { 0, 0, 0, 1 };
+    int32_t iv[4] = { 0, 0, 0, 1 };
+    for (int j = 0; j < a->size && j < 4; j++) {
+        const uint8_t* q = p + (size_t)j * (size_t)fgl_tsize(a->type);
+        switch (a->type) {
+        case GL_FLOAT: memcpy(&f[j], q, 4); break;
+        case GL_DOUBLE: { double d; memcpy(&d, q, 8); f[j] = (float)d; break; }
+        case GL_HALF_FLOAT: { uint16_t h; memcpy(&h, q, 2); f[j] = fgl_half(h); break; }
+        case GL_BYTE: iv[j] = *(const int8_t*)q, f[j] = a->normalized ? fmaxf((float)iv[j] / 127.0f, -1.0f) : (float)iv[j]; break;
+        case GL_UNSIGNED_BYTE: iv[j] = *q, f[j] = a->normalized ? (float)iv[j] / 255.0f : (float)iv[j]; break;
+        case GL_SHORT: { int16_t v; memcpy(&v, q, 2); iv[j] = v; f[j] = a->normalized ? fmaxf((float)v / 32767.0f, -1.0f) : (float)v; break; }
+        case GL_UNSIGNED_SHORT: { uint16_t v; memcpy(&v, q, 2); iv[j] = v; f[j] = a->normalized ? (float)v / 65535.0f : (float)v; break; }
+        case GL_INT: { int32_t v; memcpy(&v, q, 4); iv[j] = v; f[j] = a->normalized ? fmaxf((float)v / 2147483647.0f, -1.0f) : (float)v; break; }
+        default: { uint32_t v; memcpy(&v, q, 4); iv[j] = (int32_t)v; f[j] = a->normalized ? (float)v / 4294967295.0f : (float)v; break; }
+        }
+    }
+    if (a->integer) memcpy(out, iv, 16);
+    else memcpy(out, f, 16);
+}
+
+static const uint8_t* fgl_attr_base(fgl_ctx* c, const fgl_attrib* a)
+{
+    if (!a->buffer) return (const uint8_t*)a->offset; /* client memory (compatibility) */
+    fgl_buf* b = fgl_buffer(c, a->buffer);
+    return b && b->data ? b->data + a->offset : NULL;
+}
+
+int fgl_texture_use(fgl_ctx* c, fgl_tex* t, fm3d_texture** tex, fm3d_sampler* s)
+{
+    (void)c;
+    if (!t || !t->level0) return 0;
+    int mips = t->min_filter != GL_NEAREST && t->min_filter != GL_LINEAR;
+    if (!t->tex || t->built_mips != mips) {
+        fm3d_texture_release(t->tex);
+        t->tex        = fm3d_texture_create(t->level0, mips);
+        t->built_mips = mips;
+    }
+    memset(s, 0, sizeof(*s));
+    switch (t->min_filter) {
+    case GL_NEAREST: s->filter = FM3D_FILTER_NEAREST; break;
+    case GL_LINEAR: s->filter = FM3D_FILTER_BILINEAR; break;
+    case GL_NEAREST_MIPMAP_NEAREST: case GL_NEAREST_MIPMAP_LINEAR: s->filter = FM3D_FILTER_NEAREST_MIPMAP; break;
+    case GL_LINEAR_MIPMAP_NEAREST: s->filter = FM3D_FILTER_BILINEAR_MIPMAP; break;
+    default: s->filter = FM3D_FILTER_TRILINEAR; break;
+    }
+    if (t->mag_filter == GL_NEAREST && t->min_filter == GL_NEAREST) s->filter = FM3D_FILTER_NEAREST;
+    s->wrap_u = t->wrap_s == GL_REPEAT ? FM_WRAP_REPEAT : (t->wrap_s == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
+    s->wrap_v = t->wrap_t == GL_REPEAT ? FM_WRAP_REPEAT : (t->wrap_t == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
+    *tex      = t->tex;
+    return 1;
+}
+
+/* the program's uniforms, blocks and textures as fatmap state */
+static void fgl_sync_program(fgl_ctx* c, fgl_program* p)
+{
+    fm3d_ctx* f = c->c3;
+    fm3d_set_lighting(f, 0);
+    fm3d_set_program(f, &p->prog);
+    /* one default block for both stages (the same layout in both: glslang merges it) */
+    if (p->defsize[0]) fm3d_set_uniform_block(f, FGL_DEF_VS, p->def[0], (size_t)p->defsize[0]);
+    else fm3d_set_uniform_block(f, FGL_DEF_FS, p->def[1], (size_t)p->defsize[1]);
+    for (int i = 0; i < p->nblocks; i++) {
+        const fgl_ublock* b  = &p->blocks[i];
+        fgl_buf*          bf = fgl_buffer(c, c->ubo[b->gl_binding].buffer);
+        const void*       d  = NULL;
+        size_t            n  = 0;
+        if (bf && bf->data && c->ubo[b->gl_binding].offset < bf->size) {
+            d = bf->data + c->ubo[b->gl_binding].offset;
+            n = c->ubo[b->gl_binding].size ? (size_t)c->ubo[b->gl_binding].size : (size_t)(bf->size - c->ubo[b->gl_binding].offset);
+            if (n > (size_t)(bf->size - c->ubo[b->gl_binding].offset)) n = (size_t)(bf->size - c->ubo[b->gl_binding].offset);
+        }
+        for (int k = 0; k < 2; k++)
+            if (b->spv_binding[k] >= 0) fm3d_set_uniform_block(f, b->spv_binding[k], d, n);
+    }
+    for (int i = 0; i < p->nu; i++) {
+        const fgl_uniform* u = &p->u[i];
+        if (u->type != GL_SAMPLER_2D || u->sampler_binding < 0 || u->sampler_binding >= FM3D_MAX_TEXTURE_UNITS) continue;
+        fm3d_texture* t = NULL;
+        fm3d_sampler  s;
+        GLuint        name = u->unit >= 0 && u->unit < FGL_UNITS ? c->unit_tex[u->unit] : 0;
+        if (fgl_texture_use(c, name ? fgl_texture(c, name, 0) : NULL, &t, &s)) fm3d_set_texture_unit(f, u->sampler_binding, t, &s);
+        else fm3d_set_texture_unit(f, u->sampler_binding, NULL, NULL);
+    }
+}
+
+void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenum itype, const void* indices, GLint basevertex,
+                      GLsizei instances)
+{
+    fgl_program* p = fgl_program_get(c, c->program);
+    if (!p || !p->linked || count <= 0 || instances <= 0) return;
+    if (mode != GL_TRIANGLES && mode != GL_TRIANGLE_STRIP && mode != GL_TRIANGLE_FAN) {
+        fgl_unimplemented("points / lines");
+        return;
+    }
+    fgl_vao* vao = fgl_cur_vao(c);
+    /* the vertex numbers in draw order */
+    int* vid = (int*)malloc((size_t)count * sizeof(int));
+    if (!vid) {
+        fgl_error(GL_OUT_OF_MEMORY);
+        return;
+    }
+    int vmin = 0x7fffffff, vmax = -1;
+    if (indices || itype) {
+        const uint8_t* ip = (const uint8_t*)indices;
+        if (vao->elements) {
+            fgl_buf* eb = fgl_buffer(c, vao->elements);
+            ip          = eb && eb->data ? eb->data + (uintptr_t)indices : NULL;
+        }
+        if (!ip) {
+            free(vid);
+            fgl_error(GL_INVALID_OPERATION);
+            return;
+        }
+        for (GLsizei i = 0; i < count; i++) {
+            int e = itype == GL_UNSIGNED_BYTE ? ip[i] : (itype == GL_UNSIGNED_SHORT ? ((const uint16_t*)ip)[i] : (int)((const uint32_t*)ip)[i]);
+            vid[i] = e + basevertex;
+        }
+    } else {
+        for (GLsizei i = 0; i < count; i++) vid[i] = first + i;
+    }
+    for (GLsizei i = 0; i < count; i++) vmin = vid[i] < vmin ? vid[i] : vmin, vmax = vid[i] > vmax ? vid[i] : vmax;
+    int nv = vmax - vmin + 1;
+    if (vmin < 0 || nv > (1 << 24)) {
+        free(vid);
+        fgl_error(GL_INVALID_VALUE);
+        return;
+    }
+    /* triangles (indices relative to vmin) */
+    int       ntri = mode == GL_TRIANGLES ? count / 3 : (count >= 3 ? count - 2 : 0);
+    uint32_t* tri  = (uint32_t*)malloc(((size_t)ntri * 3 + 1) * sizeof(uint32_t));
+    int       stride = 16 * (p->max_loc + 1 > 0 ? p->max_loc + 1 : 1);
+    uint8_t*  stream = (uint8_t*)malloc((size_t)nv * (size_t)stride);
+    if (!tri || !stream) {
+        free(vid), free(tri), free(stream);
+        fgl_error(GL_OUT_OF_MEMORY);
+        return;
+    }
+    for (int t = 0; t < ntri; t++) {
+        int a, b, d;
+        if (mode == GL_TRIANGLES) a = 3 * t, b = a + 1, d = a + 2;
+        else if (mode == GL_TRIANGLE_FAN) a = 0, b = t + 1, d = t + 2;
+        else if (t & 1) a = t + 1, b = t, d = t + 2; /* strip: keep the winding */
+        else a = t, b = t + 1, d = t + 2;
+        tri[3 * t]     = (uint32_t)(vid[a] - vmin);
+        tri[3 * t + 1] = (uint32_t)(vid[b] - vmin);
+        tri[3 * t + 2] = (uint32_t)(vid[d] - vmin);
+    }
+    int per_instance = 0;
+    for (int i = 0; i < p->nin; i++) {
+        int g = glGetAttribLocation(p->name, p->in[i].name);
+        if (g >= 0 && g < FGL_ATTRIBS && vao->a[g].enabled && vao->a[g].divisor) per_instance = 1;
+    }
+    fgl_sync(c);
+    fgl_sync_program(c, p);
+    for (GLsizei inst = 0; inst < instances; inst++) {
+        if (inst == 0 || per_instance) { /* the stream (again when attributes advance per instance) */
+            for (int i = 0; i < p->nin; i++) {
+                int loc = p->in[i].location, g = glGetAttribLocation(p->name, p->in[i].name);
+                if (loc < 0 || loc >= FGL_ATTRIBS) continue;
+                const fgl_attrib* a    = g >= 0 && g < FGL_ATTRIBS ? &vao->a[g] : NULL;
+                const uint8_t*    base = a && a->enabled ? fgl_attr_base(c, a) : NULL;
+                for (int v = 0; v < nv; v++) {
+                    uint32_t* o = (uint32_t*)(stream + (size_t)v * (size_t)stride + 16 * loc);
+                    if (!base) {
+                        memcpy(o, g >= 0 && g < FGL_ATTRIBS ? c->attr_value[g] : c->attr_value[0], 16);
+                        continue;
+                    }
+                    int    e  = a->divisor ? (int)(inst / (GLsizei)a->divisor) : vmin + v;
+                    size_t st = a->stride ? (size_t)a->stride : (size_t)(a->size * fgl_tsize(a->type));
+                    fgl_fetch_attr(a, base + (size_t)e * st, o);
+                }
+            }
+        }
+        fm3d_set_draw_ids(c->c3, vmin, (int)inst);
+        fm3d_draw_vertices(c->c3, stream, stride, nv, tri, ntri * 3);
+    }
+    fm3d_set_draw_ids(c->c3, 0, 0);
+    free(vid), free(tri), free(stream);
+}
+
+/* ---- entry points with a program ---- */
+void APIENTRY glDrawArraysInstanced(GLenum mode, GLint first, GLsizei count, GLsizei n)
+{
+    FGL_CTX_OR_RETURN(c);
+    if (c->program) fgl_draw_program(c, mode, first, count, 0, NULL, 0, n);
+}
+void APIENTRY glDrawElementsInstanced(GLenum mode, GLsizei count, GLenum type, const void* idx, GLsizei n)
+{
+    FGL_CTX_OR_RETURN(c);
+    if (c->program) fgl_draw_program(c, mode, 0, count, type, idx, 0, n);
+}
+void APIENTRY glDrawElementsBaseVertex(GLenum mode, GLsizei count, GLenum type, const void* idx, GLint base)
+{
+    FGL_CTX_OR_RETURN(c);
+    if (c->program) fgl_draw_program(c, mode, 0, count, type, idx, base, 1);
+}
+void APIENTRY glDrawElementsInstancedBaseVertex(GLenum mode, GLsizei count, GLenum type, const void* idx, GLsizei n, GLint base)
+{
+    FGL_CTX_OR_RETURN(c);
+    if (c->program) fgl_draw_program(c, mode, 0, count, type, idx, base, n);
+}
+void APIENTRY glDrawRangeElements(GLenum mode, GLuint lo, GLuint hi, GLsizei count, GLenum type, const void* idx)
+{
+    (void)lo, (void)hi;
+    glDrawElements(mode, count, type, idx);
+}
+void APIENTRY glDrawRangeElementsBaseVertex(GLenum mode, GLuint lo, GLuint hi, GLsizei count, GLenum type, const void* idx, GLint base)
+{
+    (void)lo, (void)hi;
+    glDrawElementsBaseVertex(mode, count, type, idx, base);
+}
+void APIENTRY glMultiDrawArrays(GLenum mode, const GLint* first, const GLsizei* count, GLsizei n)
+{
+    for (GLsizei i = 0; i < n; i++) glDrawArrays(mode, first[i], count[i]);
+}
+void APIENTRY glMultiDrawElements(GLenum mode, const GLsizei* count, GLenum type, const void* const* idx, GLsizei n)
+{
+    for (GLsizei i = 0; i < n; i++) glDrawElements(mode, count[i], type, idx[i]);
+}
+
+/* ---- texture units ---- */
+void APIENTRY glActiveTexture(GLenum unit)
+{
+    FGL_CTX_OR_RETURN(c);
+    int u = (int)unit - GL_TEXTURE0;
+    if (u < 0 || u >= FGL_UNITS) {
+        fgl_error(GL_INVALID_ENUM);
+        return;
+    }
+    c->active_unit = u;
+}

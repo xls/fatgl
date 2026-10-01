@@ -17,6 +17,18 @@
 static int         g_w = 960, g_h = 600, g_running = 1, g_frame;
 static const char* g_shot; /* --shot file.bmp: save frame 30 and quit */
 
+/* an error: stderr, the debugger, fatgl_examples.log next to the program; then exit (no dialogs) */
+static void ex_fail(const char* what, const char* msg)
+{
+    char line[2300];
+    snprintf(line, sizeof(line), "%s: %s\n", what, msg);
+    fputs(line, stderr);
+    OutputDebugStringA(line);
+    FILE* f = fopen("fatgl_examples.log", "a");
+    if (f) fputs(line, f), fclose(f);
+    exit(1);
+}
+
 static LRESULT CALLBACK ex_proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 {
     switch (m) {
@@ -56,13 +68,11 @@ static HDC ex_open(const char* title)
     pfd.cStencilBits = 8;
     int fmt = ChoosePixelFormat(dc, &pfd);
     if (!fmt || !SetPixelFormat(dc, fmt, &pfd)) {
-        MessageBoxA(wnd, "no pixel format", title, MB_OK);
-        return NULL;
+        ex_fail(title, "no pixel format");
     }
     HGLRC rc = wglCreateContext(dc);
     if (!rc || !wglMakeCurrent(dc, rc)) {
-        MessageBoxA(wnd, "no OpenGL context", title, MB_OK);
-        return NULL;
+        ex_fail(title, "no OpenGL context");
     }
     return dc;
 }

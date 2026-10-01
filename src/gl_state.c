@@ -345,15 +345,69 @@ const GLubyte* APIENTRY glGetString(GLenum name)
         snprintf(g_renderer, sizeof(g_renderer), "fatmap %s (%s, %d threads)", fm_version_string(), fm_simd_name(fm_simd_best()),
                  c && c->ex ? c->ex->workers : 1);
         return (const GLubyte*)g_renderer;
-    case GL_VERSION: return (const GLubyte*)"1.1.0 fatgl 0.1.0";
-    case GL_EXTENSIONS: return (const GLubyte*)"GL_EXT_bgra";
+    case GL_VERSION: return (const GLubyte*)(c && c->core ? "3.3.0 Core Profile fatgl 0.1.0" : "3.3.0 fatgl 0.1.0");
+    case GL_SHADING_LANGUAGE_VERSION: return (const GLubyte*)"3.30 fatgl (glslang)";
+    case GL_EXTENSIONS:
+        if (c && c->core) {
+            fgl_error(GL_INVALID_ENUM); /* core profile: glGetStringi */
+            return NULL;
+        }
+        return (const GLubyte*)"GL_EXT_bgra GL_ARB_vertex_buffer_object GL_ARB_vertex_array_object GL_ARB_shader_objects "
+                               "GL_ARB_vertex_shader GL_ARB_fragment_shader GL_ARB_uniform_buffer_object "
+                               "GL_ARB_draw_instanced GL_ARB_instanced_arrays GL_ARB_draw_elements_base_vertex "
+                               "GL_ARB_map_buffer_range GL_ARB_copy_buffer GL_ARB_half_float_vertex";
     default: fgl_error(GL_INVALID_ENUM); return NULL;
     }
+}
+
+static const char* g_ext[] = { "GL_EXT_bgra", "GL_ARB_vertex_buffer_object", "GL_ARB_vertex_array_object",
+                               "GL_ARB_uniform_buffer_object", "GL_ARB_draw_instanced", "GL_ARB_instanced_arrays",
+                               "GL_ARB_draw_elements_base_vertex", "GL_ARB_map_buffer_range", "GL_ARB_copy_buffer",
+                               "GL_ARB_half_float_vertex" };
+#define FGL_NEXT ((int)(sizeof(g_ext) / sizeof(g_ext[0])))
+
+const GLubyte* APIENTRY glGetStringi(GLenum name, GLuint i)
+{
+    if (name != GL_EXTENSIONS || i >= (GLuint)FGL_NEXT) {
+        fgl_error(name != GL_EXTENSIONS ? GL_INVALID_ENUM : GL_INVALID_VALUE);
+        return NULL;
+    }
+    return (const GLubyte*)g_ext[i];
 }
 
 static int fgl_get_count(GLenum p, fgl_ctx* c, double* v)
 {
     switch (p) {
+    case GL_MAJOR_VERSION: v[0] = 3; return 1;
+    case GL_MINOR_VERSION: v[0] = 3; return 1;
+    case GL_NUM_EXTENSIONS: v[0] = FGL_NEXT; return 1;
+    case GL_CONTEXT_PROFILE_MASK: v[0] = c->core ? GL_CONTEXT_CORE_PROFILE_BIT : GL_CONTEXT_COMPATIBILITY_PROFILE_BIT; return 1;
+    case GL_CONTEXT_FLAGS: v[0] = 0; return 1;
+    case GL_MAX_VERTEX_ATTRIBS: v[0] = FGL_ATTRIBS; return 1;
+    case GL_MAX_TEXTURE_IMAGE_UNITS: v[0] = FM3D_MAX_TEXTURE_UNITS; return 1;
+    case GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS: v[0] = FGL_UNITS; return 1;
+    case GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS: v[0] = FM3D_MAX_TEXTURE_UNITS; return 1;
+    case GL_MAX_UNIFORM_BUFFER_BINDINGS: v[0] = FGL_UBO_BINDS; return 1;
+    case GL_MAX_UNIFORM_BLOCK_SIZE: v[0] = 65536; return 1;
+    case GL_MAX_VERTEX_UNIFORM_BLOCKS: case GL_MAX_FRAGMENT_UNIFORM_BLOCKS: v[0] = 12; return 1;
+    case GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT: v[0] = 16; return 1;
+    case GL_MAX_VERTEX_UNIFORM_COMPONENTS: case GL_MAX_FRAGMENT_UNIFORM_COMPONENTS: v[0] = 16384; return 1;
+    case GL_MAX_VARYING_COMPONENTS: case GL_MAX_VERTEX_OUTPUT_COMPONENTS: case GL_MAX_FRAGMENT_INPUT_COMPONENTS:
+        v[0] = FM3D_MAX_SHADER_VARYINGS;
+        return 1;
+    case GL_MAX_DRAW_BUFFERS: case GL_MAX_COLOR_ATTACHMENTS: v[0] = 1; return 1;
+    case GL_MAX_RENDERBUFFER_SIZE: v[0] = 8192; return 1;
+    case GL_MAX_ELEMENTS_VERTICES: case GL_MAX_ELEMENTS_INDICES: v[0] = 1 << 24; return 1;
+    case GL_CURRENT_PROGRAM: v[0] = c->program; return 1;
+    case GL_VERTEX_ARRAY_BINDING: v[0] = c->vao; return 1;
+    case GL_ARRAY_BUFFER_BINDING: v[0] = c->array_buffer; return 1;
+    case GL_ELEMENT_ARRAY_BUFFER_BINDING: v[0] = fgl_cur_vao(c)->elements; return 1;
+    case GL_UNIFORM_BUFFER_BINDING: v[0] = c->uniform_buffer; return 1;
+    case GL_ACTIVE_TEXTURE: v[0] = GL_TEXTURE0 + c->active_unit; return 1;
+    case GL_DRAW_FRAMEBUFFER_BINDING: case GL_READ_FRAMEBUFFER_BINDING: case GL_RENDERBUFFER_BINDING: v[0] = 0; return 1;
+    case GL_BLEND_SRC_RGB: case GL_BLEND_SRC_ALPHA: v[0] = c->blend_src; return 1;
+    case GL_BLEND_DST_RGB: case GL_BLEND_DST_ALPHA: v[0] = c->blend_dst; return 1;
+    case GL_PACK_ALIGNMENT: v[0] = c->pack_align; return 1;
     case GL_VIEWPORT: for (int i = 0; i < 4; i++) v[i] = c->viewport[i]; return 4;
     case GL_SCISSOR_BOX: for (int i = 0; i < 4; i++) v[i] = c->scissor[i]; return 4;
     case GL_COLOR_CLEAR_VALUE: for (int i = 0; i < 4; i++) v[i] = c->clear_color[i]; return 4;
@@ -373,7 +427,7 @@ static int fgl_get_count(GLenum p, fgl_ctx* c, double* v)
     case GL_RED_BITS: case GL_GREEN_BITS: case GL_BLUE_BITS: case GL_ALPHA_BITS: v[0] = 8; return 1;
     case GL_DEPTH_BITS: v[0] = 24; return 1;
     case GL_STENCIL_BITS: v[0] = 8; return 1;
-    case GL_TEXTURE_BINDING_2D: v[0] = c->bound_tex; return 1;
+    case GL_TEXTURE_BINDING_2D: v[0] = FGL_BOUND_TEX(c); return 1;
     case GL_UNPACK_ALIGNMENT: v[0] = c->unpack_align; return 1;
     case GL_MODELVIEW_MATRIX: case GL_PROJECTION_MATRIX: case GL_TEXTURE_MATRIX: {
         int      m = p == GL_MODELVIEW_MATRIX ? FGL_MV : (p == GL_PROJECTION_MATRIX ? FGL_PROJ : FGL_TEXM);

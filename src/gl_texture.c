@@ -48,7 +48,8 @@ void APIENTRY glDeleteTextures(GLsizei n, const GLuint* names)
         fm3d_texture_release(t->tex);
         fm_surface_destroy(t->level0);
         memset(t, 0, sizeof(*t));
-        if (c->bound_tex == names[i]) c->bound_tex = 0;
+        for (int u = 0; u < FGL_UNITS; u++)
+            if (c->unit_tex[u] == names[i]) c->unit_tex[u] = 0;
     }
 }
 
@@ -67,7 +68,7 @@ void APIENTRY glBindTexture(GLenum target, GLuint name)
         return;
     }
     if (name) fgl_texture(c, name, 1);
-    c->bound_tex = name;
+    FGL_BOUND_TEX(c) = name;
 }
 
 /* one texel of client memory -> straight RGBA 0..255 */
@@ -141,7 +142,7 @@ void APIENTRY glTexImage2D(GLenum target, GLint level, GLint ifmt, GLsizei w, GL
         return;
     }
     if (level > 0) return; /* mipmaps come from level 0 */
-    fgl_tex* t = c->bound_tex ? fgl_texture(c, c->bound_tex, 1) : NULL;
+    fgl_tex* t = FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 1) : NULL;
     if (!t) {
         fgl_error(GL_INVALID_OPERATION);
         return;
@@ -158,7 +159,7 @@ void APIENTRY glTexSubImage2D(GLenum target, GLint level, GLint x, GLint y, GLsi
                               const void* pixels)
 {
     FGL_CTX_OR_RETURN(c);
-    fgl_tex* t = c->bound_tex ? fgl_texture(c, c->bound_tex, 0) : NULL;
+    fgl_tex* t = FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 0) : NULL;
     if (target != GL_TEXTURE_2D || !t || !t->level0 || level != 0) {
         if (level > 0) return;
         fgl_error(GL_INVALID_OPERATION);
@@ -177,7 +178,7 @@ void APIENTRY glTexSubImage2D(GLenum target, GLint level, GLint x, GLint y, GLsi
 void APIENTRY glTexParameteri(GLenum target, GLenum p, GLint v)
 {
     FGL_CTX_OR_RETURN(c);
-    fgl_tex* t = target == GL_TEXTURE_2D && c->bound_tex ? fgl_texture(c, c->bound_tex, 1) : NULL;
+    fgl_tex* t = target == GL_TEXTURE_2D && FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 1) : NULL;
     if (!t) return;
     switch (p) {
     case GL_TEXTURE_MIN_FILTER: t->min_filter = (GLenum)v; break;
@@ -199,3 +200,12 @@ void APIENTRY glTexEnvi(GLenum target, GLenum p, GLint v)
 void APIENTRY glTexEnvf(GLenum target, GLenum p, GLfloat v) { glTexEnvi(target, p, (GLint)v); }
 void APIENTRY glTexEnvfv(GLenum target, GLenum p, const GLfloat* v) { glTexEnvi(target, p, (GLint)v[0]); }
 void APIENTRY glTexEnviv(GLenum target, GLenum p, const GLint* v) { glTexEnvi(target, p, v[0]); }
+
+void APIENTRY glGenerateMipmap(GLenum target)
+{
+    FGL_CTX_OR_RETURN(c);
+    fgl_tex* t = target == GL_TEXTURE_2D && FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 0) : NULL;
+    if (!t) return;
+    fm3d_texture_release(t->tex); /* rebuilt with mipmaps (from level 0) on the next use */
+    t->tex = NULL;
+}

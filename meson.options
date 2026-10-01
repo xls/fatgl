@@ -1,0 +1,2 @@
+option('fatmap', type : 'combo', choices : ['release', 'source'], value : 'release',
+  description : 'fatmap from its release package (subprojects/fatmap.wrap) or from a source checkout at subprojects/fatmap-src (development)')

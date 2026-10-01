@@ -75,6 +75,7 @@
 #define GL_COLOR_ARRAY            0x8076
 #define GL_TEXTURE_COORD_ARRAY    0x8078
 #define GL_LIGHT0                 0x4000
+#define GL_ALPHA                  0x1906
 #define GL_RED_BITS               0x0D52
 #define GL_GREEN_BITS             0x0D53
 #define GL_BLUE_BITS              0x0D54
@@ -107,6 +108,99 @@ typedef struct fgl_tex {
     int           built_mips;
     GLenum        min_filter, mag_filter, wrap_s, wrap_t;
 } fgl_tex;
+
+/* ---- GL 2.0 / 3.x objects ---- */
+#define FGL_ATTRIBS   16 /* generic vertex attributes */
+#define FGL_UNITS     16 /* texture image units */
+#define FGL_UBO_BINDS 36 /* indexed uniform buffer binding points */
+#define FGL_DEF_VS    15 /* fatmap uniform block binding of the default block (glslang links one block for both stages) */
+#define FGL_DEF_FS    15
+
+typedef struct fgl_buf {
+    GLuint     name;
+    int        used;
+    uint8_t*   data;
+    GLsizeiptr size;
+    GLenum     usage;
+    int        mapped;
+} fgl_buf;
+
+typedef struct fgl_attrib {
+    int        enabled, integer, normalized;
+    GLint      size;
+    GLenum     type;
+    GLsizei    stride;
+    GLintptr   offset; /* into the buffer (or a client pointer with buffer 0) */
+    GLuint     buffer;
+    GLuint     divisor;
+} fgl_attrib;
+
+typedef struct fgl_vao {
+    GLuint     name;
+    int        used;
+    GLuint     elements; /* GL_ELEMENT_ARRAY_BUFFER */
+    fgl_attrib a[FGL_ATTRIBS];
+} fgl_vao;
+
+typedef struct fgl_shader {
+    GLuint name;
+    int    used;
+    GLenum type;
+    char*  src;
+    int    compiled;
+    char*  log;
+    int    delete_pending;
+} fgl_shader;
+
+/* a uniform of the default block (both stages: their own offsets, -1 if
+ * the stage does not use it) or a sampler */
+typedef struct fgl_uniform {
+    char   name[96];
+    GLenum type;           /* GL_FLOAT_VEC4, GL_FLOAT_MAT4, GL_INT, GL_SAMPLER_2D, ... */
+    int    count;          /* array elements (1 if not an array) */
+    int    off[2];         /* byte offset in the vertex / fragment default block */
+    int    astride, mstride;
+    int    sampler_binding; /* samplers: the fatmap texture unit */
+    int    unit;            /* samplers: the GL texture unit (glUniform1i) */
+} fgl_uniform;
+
+typedef struct fgl_ublock { /* a named uniform block */
+    char name[96];
+    int  spv_binding[2]; /* per stage, -1 if unused */
+    int  size;
+    int  gl_binding;     /* glUniformBlockBinding */
+} fgl_ublock;
+
+typedef struct fgl_input { /* a vertex shader input */
+    char name[96];
+    int  location;
+} fgl_input;
+
+typedef struct fgl_program {
+    GLuint       name;
+    int          used;
+    GLuint       shaders[8];
+    int          nshaders;
+    int          linked;
+    char*        log;
+    fm3d_spirv*  sp;
+    fm3d_program prog;
+    uint8_t*     def[2]; /* default uniform block data per stage */
+    int          defsize[2];
+    fgl_uniform* u;
+    int          nu;
+    fgl_ublock   blocks[14];
+    int          nblocks;
+    fgl_input    in[FGL_ATTRIBS];
+    int          nin;
+    int          max_loc;
+    struct {
+        char name[96];
+        int  index;
+    } bind_attrib[FGL_ATTRIBS]; /* glBindAttribLocation */
+    int nbind;
+    int delete_pending;
+} fgl_program;
 
 typedef struct fgl_op fgl_op; /* a recorded display list command */
 typedef struct fgl_list {
@@ -169,7 +263,6 @@ typedef struct fgl_ctx {
     /* textures */
     fgl_tex* tex;
     int      ntex;
-    GLuint   bound_tex;
     GLenum   tex_env;
 
     /* display lists */
@@ -179,6 +272,29 @@ typedef struct fgl_ctx {
     GLenum    list_mode;
     int       list_depth; /* glCallList nesting */
 
+    /* GL 2.0 / 3.x objects (shared namespaces: shaders + programs) */
+    fgl_buf*     bufs;
+    int          nbufs;
+    fgl_vao*     vaos;
+    int          nvaos;
+    fgl_vao      vao0; /* the default vertex array (compatibility) */
+    GLuint       vao;  /* bound vertex array (0: vao0) */
+    fgl_shader*  shaders;
+    int          nshaders;
+    fgl_program* progs;
+    int          nprogs;
+    GLuint       next_sp_name;
+    GLuint       program; /* glUseProgram */
+    GLuint       array_buffer, uniform_buffer, copy_read, copy_write, unpack_buffer, pack_buffer;
+    struct {
+        GLuint     buffer;
+        GLintptr   offset;
+        GLsizeiptr size; /* 0: the whole buffer */
+    } ubo[FGL_UBO_BINDS];
+    GLuint unit_tex[FGL_UNITS]; /* GL_TEXTURE_2D binding per texture unit */
+    int    active_unit;
+    float  attr_value[FGL_ATTRIBS][4]; /* generic attribute values (glVertexAttrib*) */
+
     /* client vertex arrays: vertex, normal, color, texcoord */
     struct {
         int         on;
@@ -186,7 +302,9 @@ typedef struct fgl_ctx {
         GLenum      type;
         GLsizei     stride;
         const void* ptr;
+        GLuint      buffer; /* GL_ARRAY_BUFFER when the pointer was set: ptr is an offset */
     } va[4];
+#define FGL_BOUND_TEX(c) ((c)->unit_tex[(c)->active_unit])
 } fgl_ctx;
 
 fgl_ctx* fgl_cur(void);
@@ -202,6 +320,15 @@ void fgl_sync(fgl_ctx* c);
 /* triangles of a primitive (GL_TRIANGLES .. GL_POLYGON) through fatmap */
 void fgl_draw_prim(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n);
 fgl_tex* fgl_texture(fgl_ctx* c, GLuint name, int create);
+/* fatmap texture + sampler of a GL texture object (built on demand); 0 without an image */
+int fgl_texture_use(fgl_ctx* c, fgl_tex* t, fm3d_texture** tex, fm3d_sampler* s);
+fgl_buf*     fgl_buffer(fgl_ctx* c, GLuint name);
+fgl_vao*     fgl_cur_vao(fgl_ctx* c);
+fgl_program* fgl_program_get(fgl_ctx* c, GLuint name);
+/* a draw with the current program (GL 2.0+ path): mode, `count` vertices
+ * or indices (indices NULL: arrays from `first`), instances */
+void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenum itype, const void* indices, GLint basevertex,
+                      GLsizei instances);
 fgl_list* fgl_list_get(fgl_ctx* c, GLuint name, int create);
 
 /* display lists: while compiling, commands are recorded (and executed

@@ -185,27 +185,11 @@ static void fgl_sync_fixed(fgl_ctx* c)
         fm3d_set_ambient_light(f, fm_v3(c->light_model_ambient[0], c->light_model_ambient[1], c->light_model_ambient[2]));
         fm3d_set_color_material(f, (c->enables & FGL_E_COLMAT) != 0);
     }
-    fgl_tex* t = (c->enables & FGL_E_TEX2D) && c->bound_tex ? fgl_texture(c, c->bound_tex, 0) : NULL;
-    if (t && t->level0) {
-        int mips = t->min_filter != GL_NEAREST && t->min_filter != GL_LINEAR;
-        if (!t->tex || t->built_mips != mips) {
-            fm3d_texture_release(t->tex);
-            t->tex        = fm3d_texture_create(t->level0, mips);
-            t->built_mips = mips;
-        }
-        fm3d_sampler s;
-        memset(&s, 0, sizeof(s));
-        switch (t->min_filter) {
-        case GL_NEAREST: s.filter = FM3D_FILTER_NEAREST; break;
-        case GL_LINEAR: s.filter = FM3D_FILTER_BILINEAR; break;
-        case GL_NEAREST_MIPMAP_NEAREST: case GL_NEAREST_MIPMAP_LINEAR: s.filter = FM3D_FILTER_NEAREST_MIPMAP; break;
-        case GL_LINEAR_MIPMAP_NEAREST: s.filter = FM3D_FILTER_BILINEAR_MIPMAP; break;
-        default: s.filter = FM3D_FILTER_TRILINEAR; break;
-        }
-        if (t->mag_filter == GL_NEAREST && t->min_filter == GL_NEAREST) s.filter = FM3D_FILTER_NEAREST;
-        s.wrap_u = t->wrap_s == GL_REPEAT ? FM_WRAP_REPEAT : (t->wrap_s == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
-        s.wrap_v = t->wrap_t == GL_REPEAT ? FM_WRAP_REPEAT : (t->wrap_t == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
-        fm3d_set_texture(f, t->tex, &s);
+    fgl_tex*      t = (c->enables & FGL_E_TEX2D) && c->unit_tex[0] ? fgl_texture(c, c->unit_tex[0], 0) : NULL;
+    fm3d_texture* ft = NULL;
+    fm3d_sampler  s;
+    if (fgl_texture_use(c, t, &ft, &s)) {
+        fm3d_set_texture(f, ft, &s);
         fm3d_set_texenv(f, c->tex_env == GL_REPLACE ? FM3D_TEXENV_REPLACE
                                                     : (c->tex_env == GL_DECAL ? FM3D_TEXENV_DECAL
                                                                                : (c->tex_env == GL_ADD ? FM3D_TEXENV_ADD : FM3D_TEXENV_MODULATE)));
@@ -276,6 +260,7 @@ void fgl_draw_prim(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n)
         k += 3;
     }
     fgl_sync(c);
+    fm3d_set_program(c->c3, NULL); /* fixed function */
     fgl_sync_fixed(c);
     fm3d_draw(c->c3, t, k);
     free(t);
@@ -309,7 +294,7 @@ void APIENTRY glDisableClientState(GLenum a)
 static void fgl_set_va(int i, GLint size, GLenum type, GLsizei stride, const void* p)
 {
     FGL_CTX_OR_RETURN(c);
-    c->va[i].size = size, c->va[i].type = type, c->va[i].stride = stride, c->va[i].ptr = p;
+    c->va[i].size = size, c->va[i].type = type, c->va[i].stride = stride, c->va[i].ptr = p, c->va[i].buffer = c->array_buffer;
 }
 void APIENTRY glVertexPointer(GLint size, GLenum type, GLsizei stride, const void* p) { fgl_set_va(0, size, type, stride, p); }
 void APIENTRY glNormalPointer(GLenum type, GLsizei stride, const void* p) { fgl_set_va(1, 3, type, stride, p); }
@@ -327,9 +312,14 @@ static int fgl_type_size(GLenum t)
 }
 
 /* component j of array i at element e, as float (normalized for colors) */
-static float fgl_va_get(const fgl_ctx* c, int i, int e, int j, int normalize)
+static float fgl_va_get(fgl_ctx* c, int i, int e, int j, int normalize)
 {
     const char* p = (const char*)c->va[i].ptr;
+    if (c->va[i].buffer) { /* an offset into a buffer object */
+        fgl_buf* b = fgl_buffer(c, c->va[i].buffer);
+        if (!b || !b->data) return 0.0f;
+        p = (const char*)b->data + (uintptr_t)c->va[i].ptr;
+    }
     int         s = c->va[i].stride ? c->va[i].stride : c->va[i].size * fgl_type_size(c->va[i].type);
     p += (size_t)e * (size_t)s + (size_t)j * (size_t)fgl_type_size(c->va[i].type);
     switch (c->va[i].type) {
@@ -367,7 +357,11 @@ void APIENTRY glDrawArrays(GLenum mode, GLint first, GLsizei count)
         fgl_error(GL_INVALID_VALUE);
         return;
     }
-    if (!c->va[0].on || !c->va[0].ptr || count == 0) return;
+    if (c->program) {
+        fgl_draw_program(c, mode, first, count, 0, NULL, 0, 1);
+        return;
+    }
+    if (!c->va[0].on || (!c->va[0].ptr && !c->va[0].buffer) || count == 0) return;
     fgl_vtx* v = (fgl_vtx*)malloc((size_t)count * sizeof(fgl_vtx));
     if (!v) return;
     for (int i = 0; i < count; i++) fgl_fetch(c, first + i, &v[i]);
@@ -382,7 +376,16 @@ void APIENTRY glDrawElements(GLenum mode, GLsizei count, GLenum type, const void
         fgl_error(GL_INVALID_VALUE);
         return;
     }
-    if (!c->va[0].on || !c->va[0].ptr || !idx || count == 0) return;
+    if (c->program) {
+        fgl_draw_program(c, mode, 0, count, type, idx, 0, 1);
+        return;
+    }
+    fgl_vao* vao = fgl_cur_vao(c);
+    if (vao->elements) { /* indices in a buffer object */
+        fgl_buf* eb = fgl_buffer(c, vao->elements);
+        idx         = eb && eb->data ? eb->data + (uintptr_t)idx : NULL;
+    }
+    if (!c->va[0].on || (!c->va[0].ptr && !c->va[0].buffer) || !idx || count == 0) return;
     fgl_vtx* v = (fgl_vtx*)malloc((size_t)count * sizeof(fgl_vtx));
     if (!v) return;
     for (int i = 0; i < count; i++) {

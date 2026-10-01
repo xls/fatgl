@@ -1,4 +1,4 @@
-project('fatgl', 'c',
+project('fatgl', 'c', 'cpp',
   version : '0.1.0',
   license : 'MIT',
   meson_version : '>=1.3.0',
@@ -16,7 +16,13 @@ endif
 
 # fatmap: a local install (pkg-config / cmake) if there is one, else the
 # release package (subprojects/fatmap.wrap)
-fatmap_dep = dependency('fatmap', version : '>=0.2.0', fallback : ['fatmap', 'fatmap_dep'])
+if get_option('fatmap') == 'source' # a checkout (e.g. a junction / symlink) at subprojects/fatmap-src
+  fatmap_dep = subproject('fatmap-src', default_options : ['tests=false', 'sandbox=disabled']).get_variable('fatmap_dep')
+else
+  fatmap_dep = dependency('fatmap', version : '>=0.2.0', fallback : ['fatmap', 'fatmap_dep'])
+endif
+# GLSL -> SPIR-V (subprojects/glslang.wrap, our meson.build)
+glslang_dep = dependency('glslang', fallback : ['glslang', 'glslang_dep'])
 
 args = cc.get_supported_arguments(['-ffp-contract=off', '-Wno-unused-parameter'])
 
@@ -28,6 +34,9 @@ sources = files(
   'src/gl_light.c',
   'src/gl_texture.c',
   'src/gl_list.c',
+  'src/gl_buffer.c',
+  'src/gl_shader.c',
+  'src/gl_draw33.c',
   'src/gen/gl_stubs.c',
   'src/gen/gl_procs.c',
 )
@@ -40,7 +49,8 @@ opengl32 = shared_library('opengl32', sources,
   c_args : args,
   include_directories : include_directories('include', 'src'),
   vs_module_defs : 'src/gen/opengl32.def',
-  dependencies : [fatmap_dep],
+  dependencies : [fatmap_dep, glslang_dep],
+  link_language : 'cpp',
   link_args : static_rt + ['-lgdi32', '-luser32'],
   install : true)
 
@@ -48,10 +58,16 @@ opengl32 = shared_library('opengl32', sources,
 # next to fatgl's opengl32.dll (the build directory) Windows loads fatgl's
 sys_gl = cc.find_library('opengl32')
 gdi = cc.find_library('gdi32')
-foreach ex : ['triangle', 'gears']
+foreach ex : ['triangle', 'gears', 'cube33']
   executable(ex, 'examples/' + ex + '.c',
     c_args : args,
     dependencies : [sys_gl, gdi],
     link_args : static_rt,
     win_subsystem : 'windows')
 endforeach
+
+# dev tool: what fatmap accepts of glslang's output for GL GLSL
+executable('glsl_probe', 'tools/glsl_probe.c',
+  dependencies : [fatmap_dep, glslang_dep],
+  link_language : 'cpp',
+  link_args : static_rt)

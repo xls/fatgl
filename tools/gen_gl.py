@@ -95,6 +95,8 @@ def implemented():
     for f in glob.glob(os.path.join(ROOT, "src", "*.c")):
         for m in re.finditer(r"APIENTRY\s+(gl\w+)\s*\(", open(f).read()):
             names.add(m.group(1))
+        for m in re.finditer(r"^FGL_\w+\((gl\w+)\s*,", open(f).read(), re.M):  # macro defined entry points
+            names.add(m.group(1))
     return names
 
 

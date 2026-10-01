@@ -2,3 +2,4 @@
 /subprojects/*/
 !/subprojects/packagefiles/
 /subprojects/packagecache/
+/subprojects/fatmap-src
