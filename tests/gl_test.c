@@ -331,6 +331,77 @@ static void test_arb_programs(void)
     glDeleteTextures(1, &tx);
 }
 
+/* Doom 3 BFG's gui shaders (GLSL 1.50 the way GL drivers accept it) */
+static void test_bfg_glsl(void)
+{
+    const char* vs = "#version 150\n"
+"#define PC\n"
+"float saturate( float v ) { return clamp( v, 0.0, 1.0 ); }\n"
+"vec4 saturate( vec4 v ) { return clamp( v, 0.0, 1.0 ); }\n"
+"vec4 tex2Dlod( sampler2D sampler, vec4 texcoord ) { return textureLod( sampler, texcoord.xy, texcoord.w ); }\n"
+"uniform vec4 _va_[4];\n"
+"float dot4 (vec4 a , vec4 b ) {return dot ( a , b ) ; }\n"
+"float dot4 (vec2 a , vec4 b ) {return dot ( vec4 ( a , 0 , 1 ) , b ) ; }\n"
+"vec4 swizzleColor (vec4 c ) {return c ; }\n"
+"in vec4 in_Position;\n"
+"in vec2 in_TexCoord;\n"
+"in vec4 in_Normal;\n"
+"in vec4 in_Tangent;\n"
+"in vec4 in_Color;\n"
+"in vec4 in_Color2;\n"
+"out vec4 gl_Position;\n"
+"out vec2 vofi_TexCoord0;\n"
+"out vec4 vofi_TexCoord1;\n"
+"out vec4 gl_FrontColor;\n"
+"void main() {\n"
+"    gl_Position . x = dot4 ( in_Position , _va_[0 /* rpMVPmatrixX */] ) ;\n"
+"    gl_Position . y = dot4 ( in_Position , _va_[1 /* rpMVPmatrixY */] ) ;\n"
+"    gl_Position . z = dot4 ( in_Position , _va_[2 /* rpMVPmatrixZ */] ) ;\n"
+"    gl_Position . w = dot4 ( in_Position , _va_[3 /* rpMVPmatrixW */] ) ;\n"
+"    vofi_TexCoord0 . xy = in_TexCoord . xy ;\n"
+"    vofi_TexCoord1 = ( swizzleColor ( in_Color2 ) * 2 ) - 1 ;\n"
+"    gl_FrontColor = swizzleColor ( in_Color ) ;\n"
+"}\n"
+;
+    const char* fs = "#version 150\n"
+"#define PC\n"
+"void clip( float v ) { if ( v < 0.0 ) { discard; } }\n"
+"void clip( vec4 v ) { if ( any( lessThan( v, vec4( 0.0 ) ) ) ) { discard; } }\n"
+"float saturate( float v ) { return clamp( v, 0.0, 1.0 ); }\n"
+"vec4 tex2D( sampler2D sampler, vec2 texcoord ) { return texture( sampler, texcoord.xy ); }\n"
+"vec4 tex2D( sampler2DShadow sampler, vec3 texcoord ) { return vec4( texture( sampler, texcoord.xyz ) ); }\n"
+"vec4 tex2D( sampler2D sampler, vec2 texcoord, vec2 dx, vec2 dy ) { return textureGrad( sampler, texcoord.xy, dx, dy ); }\n"
+"vec4 texCUBE( samplerCube sampler, vec3 texcoord ) { return texture( sampler, texcoord.xyz ); }\n"
+"vec4 texCUBE( samplerCubeShadow sampler, vec4 texcoord ) { return vec4( texture( sampler, texcoord.xyzw ) ); }\n"
+"vec4 tex1Dproj( sampler1D sampler, vec2 texcoord ) { return textureProj( sampler, texcoord ); }\n"
+"vec4 tex3Dproj( sampler3D sampler, vec4 texcoord ) { return textureProj( sampler, texcoord ); }\n"
+"vec4 tex2Dlod( sampler2D sampler, vec4 texcoord ) { return textureLod( sampler, texcoord.xy, texcoord.w ); }\n"
+"uniform sampler2D samp0;\n"
+"in vec4 gl_FragCoord;\n"
+"in vec2 vofi_TexCoord0;\n"
+"in vec4 vofi_TexCoord1;\n"
+"in vec4 gl_Color;\n"
+"out vec4 gl_FragColor;\n"
+"void main() {\n"
+"    vec4 color = ( tex2D ( samp0 , vofi_TexCoord0 ) * gl_Color ) + vofi_TexCoord1 ;\n"
+"    gl_FragColor . xyz = color. xyz * color. w ;\n"
+"    gl_FragColor . w = color. w ;\n"
+"}\n"
+;
+    GLuint p = glCreateProgram_();
+    glAttachShader_(p, compile(GL_VERTEX_SHADER, vs));
+    glAttachShader_(p, compile(GL_FRAGMENT_SHADER, fs));
+    glLinkProgram_(p);
+    GLint ok = 0;
+    glGetProgramiv_(p, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[2048];
+        glGetProgramInfoLog_(p, sizeof(log), NULL, log);
+        printf("  link log: %s\n", log);
+    }
+    CHECK(ok, "Doom 3 BFG gui.vfp links");
+}
+
 static void test_legacy_glsl(void)
 {
     /* GLSL 1.10 with the fixed function state */
@@ -397,6 +468,7 @@ int main(void)
     test_multitexture();
     test_arb_programs();
     test_legacy_glsl();
+    test_bfg_glsl();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);

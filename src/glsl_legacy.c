@@ -61,6 +61,8 @@ typedef struct fgl_rw {
 
 static const fgl_rw g_rw[] = {
     { "attribute", "in", "in", -1 },
+    { "sampler", "fgl_sampler", "fgl_sampler", -1 }, /* keywords of Vulkan GLSL, plain names in GL */
+    { "samplerShadow", "fgl_samplerShadow", "fgl_samplerShadow", -1 },
     { "texture1D", "texture", "texture", -1 },
     { "texture1DProj", "textureProj", "textureProj", -1 },
     { "texture1DLod", "textureLod", "textureLod", -1 },
@@ -199,7 +201,48 @@ static int fgl_legacy_version(const char* s, int* ver, int* compat)
         }
     }
     if (*ver == 100 || (*ver >= 300 && strstr(s, " es"))) return 0; /* GLSL ES: glslang compiles it */
-    return *ver < 140 || *compat;
+    /* every desktop shader: older ones need the rewrite, newer ones often
+     * use what GL drivers accept anyway (compatibility built ins in core
+     * versions, redeclared built ins, identifiers that are Vulkan keywords) */
+    return 1;
+}
+
+/* a line that only redeclares a built in variable, as GL drivers accept and
+ * glslang does not: [layout(...)] [qualifiers] in|out|varying|attribute|uniform type gl_Name[...]; */
+static int fgl_builtin_redecl(const char* p)
+{
+    char w[64];
+    int  storage = 0;
+    for (;;) {
+        while (*p == ' ' || *p == '\t') p++;
+        if (!strncmp(p, "layout", 6)) {
+            const char* e = strchr(p, ')');
+            if (!e) return 0;
+            p = e + 1;
+            continue;
+        }
+        int n = 0;
+        while ((isalnum((unsigned char)*p) || *p == '_') && n < 63) w[n++] = *p++;
+        w[n] = 0;
+        if (!n) return 0;
+        if (!strncmp(w, "gl_", 3)) {
+            if (!storage) return 0;
+            while (*p == ' ' || *p == '\t') p++;
+            if (*p == '[') {
+                const char* e = strchr(p, ']');
+                if (!e) return 0;
+                p = e + 1;
+                while (*p == ' ' || *p == '\t') p++;
+            }
+            if (*p != ';') return 0;
+            p++;
+            while (*p == ' ' || *p == '\t' || *p == '\r') p++;
+            return *p == '\n' || !*p || (p[0] == '/' && p[1] == '/');
+        }
+        if (!strcmp(w, "in") || !strcmp(w, "out") || !strcmp(w, "varying") || !strcmp(w, "attribute") || !strcmp(w, "uniform"))
+            storage = 1;
+        /* other words: qualifiers or the type */
+    }
 }
 
 /* the source after #version (and the #extension lines, which must stay first) */
@@ -264,6 +307,13 @@ char* fgl_glsl_upgrade(const char* src, GLenum stage, int ntexcoords, int* uses_
                     continue;
                 }
             }
+        }
+        if (bol && fgl_builtin_redecl(p)) { /* out vec4 gl_Position; and friends: dropped */
+            const char* e = strchr(p, '\n');
+            sb_str(&body, "\n");
+            p = e ? e + 1 : p + strlen(p);
+            line++;
+            continue;
         }
         bol = 0;
         if (p[0] == '/' && p[1] == '/') {
