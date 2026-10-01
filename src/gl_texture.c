@@ -271,6 +271,13 @@ static struct {
     GLenum ifmt;
 } g_proxy[FGL_TT_COUNT]; /* glTexImage* of proxy targets: what glGetTexLevelParameter reports */
 
+/* depth (stencil) internal formats */
+static int fgl_depth_ifmt(GLint f)
+{
+    return f == GL_DEPTH_COMPONENT || f == GL_DEPTH_COMPONENT16 || f == GL_DEPTH_COMPONENT24 || f == GL_DEPTH_COMPONENT32 ||
+           f == GL_DEPTH_COMPONENT32F || f == GL_DEPTH_STENCIL || f == GL_DEPTH24_STENCIL8 || f == GL_DEPTH32F_STENCIL8;
+}
+
 /* glTexImage1D / 2D / 3D: level 0 of the texture bound to target (cube faces: one face) */
 static void fgl_tex_image(fgl_ctx* c, GLenum target, GLint level, GLint ifmt, GLsizei w, GLsizei h, GLsizei d, GLint border, GLenum fmt,
                           GLenum type, const void* pixels)
@@ -298,7 +305,7 @@ static void fgl_tex_image(fgl_ctx* c, GLenum target, GLint level, GLint ifmt, GL
     }
     int layers = k == FGL_TT_CUBE ? 6 : (k == FGL_TT_3D || k == FGL_TT_2D_ARRAY ? d : (k == FGL_TT_1D_ARRAY ? h : 1));
     int lh     = k == FGL_TT_1D_ARRAY ? 1 : h; /* rows per layer */
-    int depth  = fmt == GL_DEPTH_COMPONENT || fmt == GL_DEPTH_STENCIL;
+    int depth  = fmt == GL_DEPTH_COMPONENT || fmt == GL_DEPTH_STENCIL || fgl_depth_ifmt(ifmt);
     fgl_flush(c);
     c->tgt_color = NULL;
     /* a cube face of the size of the others: the other faces stay */
@@ -689,6 +696,28 @@ void APIENTRY glGetTexImage(GLenum target, GLint level, GLenum fmt, GLenum type,
 /* copies from the read framebuffer into level 0 (a layer / face) */
 static void fgl_copy_sub(fgl_ctx* c, GLenum target, GLint level, GLint xo, GLint yo, GLint z, GLint x, GLint y, GLsizei w, GLsizei h)
 {
+    fgl_tex* dt = fgl_bound(c, target, 0);
+    if (dt && dt->depth && level == 0) { /* a depth texture: from the read framebuffer's depth (Doom 3 BFG's _currentDepth) */
+        fgl_flush(c);
+        fm_surface* src = fgl_read_depth(c);
+        fm_surface* d   = dt->depth;
+        if (!src || xo < 0 || yo < 0 || xo + w > d->width || yo + h > d->height) {
+            fgl_error(src ? GL_INVALID_VALUE : GL_INVALID_OPERATION);
+            return;
+        }
+        for (int r = 0; r < h; r++)
+            for (int i = 0; i < w; i++) {
+                int   sx = x + i, sy = y + r;
+                float v  = sx >= 0 && sy >= 0 && sx < src->width && sy < src->height ? fgl_depth_at(src, sx, sy) : 1.0f;
+                int   dx = xo + i, dy = yo + r;
+                if (d->format == FM_FORMAT_D32F) fm_surface_rowf(d, dy)[dx] = v;
+                else if (d->format == FM_FORMAT_D16) ((uint16_t*)((uint8_t*)d->data + (size_t)dy * (size_t)d->stride))[dx] = (uint16_t)(v * 65535.0f + 0.5f);
+                else fm_surface_row32(d, dy)[dx] = (fm_surface_row32(d, dy)[dx] & 0xFF000000u) | (uint32_t)(v * 16777215.0f + 0.5f);
+            }
+        fm3d_texture_release(dt->tex);
+        dt->tex = NULL;
+        return;
+    }
     int      row0;
     fgl_tex* t = fgl_sub_target(c, target, level, xo, yo, z, w, h, 1, &row0);
     if (!t) return;

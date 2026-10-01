@@ -1023,6 +1023,23 @@ static void test_border_and_formats(void)
     glUseProgram_(0);
     uint32_t sw = px(32, 32), want565 = 0xFF000000u | (10u * 255 / 31) << 16 | (40u * 255 / 63) << 8 | (20u * 255 / 31);
     CHECK(close_to(sw, want565, 1), "GL_UNPACK_SWAP_BYTES RGB565 (%08x want %08x)", sw, want565);
+    /* glCopyTexImage2D(GL_DEPTH_COMPONENT): the depth buffer (Doom 3 BFG's _currentDepth) */
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_ALWAYS);
+    glMatrixMode(GL_PROJECTION), glLoadIdentity(), glMatrixMode(GL_MODELVIEW), glLoadIdentity();
+    glBegin(GL_QUADS); /* window depth 0.25 */
+    glVertex3f(-1, -1, -0.5f), glVertex3f(1, -1, -0.5f), glVertex3f(1, 1, -0.5f), glVertex3f(-1, 1, -0.5f);
+    glEnd();
+    glDisable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glCopyTexImage2D(GL_TEXTURE_2D, 0, 0x1902 /* GL_DEPTH_COMPONENT */, 0, 0, 64, 64, 0);
+    glUseProgram_(p);
+    glUniform3f_(dir, 0.5f, 0.5f, 0);
+    full_quad();
+    glUseProgram_(0);
+    uint32_t dc = px(32, 32);
+    CHECK(close_to(dc, 0xFF404040u, 2) && glGetError() == GL_NO_ERROR, "glCopyTexImage2D of the depth buffer (%08x)", dc);
     CHECK(it == 0x60606060u, "GL_INTENSITY8 from luminance (%08x)", it);
     CHECK(rgb == 0xFF804020u, "GL_RGB keeps no alpha (%08x)", rgb);
     glDeleteTextures(3, t);
