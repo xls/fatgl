@@ -51,11 +51,10 @@ build\fbo33.exe          # render to texture: framebuffer object, renderbuffer, 
 build\blend.exe          # every blend equation, constant color, straight alpha textures
 ```
 
-fatmap comes from its release package (`subprojects/fatmap.wrap`), or with
-`-Dfatmap=source` from a fatmap checkout at `subprojects/fatmap-src` (a
-junction / symlink; fatgl currently needs fatmap features newer than the
-v0.2.0 release: SPIR-V function call inlining, uniform blocks by binding,
-vertex / instance ids, lower left origin, straight color blending). glslang (GLSL to SPIR-V) comes from
+fatmap comes from its release package (`subprojects/fatmap.wrap`, v0.3.0),
+or with `-Dfatmap=source` from a fatmap checkout at
+`subprojects/fatmap-src` (a junction / symlink) when developing both.
+glslang (GLSL to SPIR-V) comes from
 `subprojects/glslang.wrap` with fatgl's own Meson build of it. The examples
 link against the system `opengl32` import library on purpose: Windows
 loads the DLL next to the executable, which is fatgl's.
