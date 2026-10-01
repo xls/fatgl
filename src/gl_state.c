@@ -300,6 +300,8 @@ void APIENTRY glPixelStorei(GLenum p, GLint v)
     if (p == GL_UNPACK_ALIGNMENT) c->unpack_align = v;
     else if (p == GL_UNPACK_ROW_LENGTH) c->unpack_row = v;
     else if (p == GL_PACK_ALIGNMENT) c->pack_align = v > 0 ? v : 1;
+    else if (p == GL_UNPACK_SKIP_ROWS) c->unpack_skip_rows = v > 0 ? v : 0;
+    else if (p == GL_UNPACK_SKIP_PIXELS) c->unpack_skip_pixels = v > 0 ? v : 0;
 }
 void APIENTRY glHint(GLenum target, GLenum mode) { (void)target, (void)mode; }
 void APIENTRY glPolygonMode(GLenum face, GLenum mode)
@@ -402,7 +404,7 @@ const GLubyte* APIENTRY glGetString(GLenum name)
     switch (name) {
     case GL_VENDOR: return (const GLubyte*)"fatgl";
     case GL_RENDERER:
-        snprintf(g_renderer, sizeof(g_renderer), "fatmap %s (%s, %d threads)", fm_version_string(), fm_simd_name(fm_simd_best()),
+        snprintf(g_renderer, sizeof(g_renderer), "fatgl on fatmap %s (%s, %d threads)", fm_version_string(), fm_simd_name(fm_simd_best()),
                  c && c->ex ? c->ex->workers : 1);
         return (const GLubyte*)g_renderer;
     case GL_VERSION: return (const GLubyte*)(c && c->core ? "3.3.0 Core Profile fatgl 0.1.0" : "3.3.0 fatgl 0.1.0");
@@ -556,29 +558,46 @@ void APIENTRY glReadPixels(GLint x, GLint y, GLsizei w, GLsizei h, GLenum fmt, G
         fgl_error(GL_INVALID_VALUE);
         return;
     }
-    if (type != GL_UNSIGNED_BYTE || (fmt != GL_RGBA && fmt != GL_BGRA && fmt != GL_RGB && fmt != GL_BGR)) {
-        fgl_unimplemented("glReadPixels (formats other than RGB(A) / BGR(A) unsigned byte)");
-        return;
-    }
     fgl_flush(c);
-    fm_surface* src = fgl_read_color(c);
-    if (!src) {
-        fgl_error(GL_INVALID_OPERATION);
+    int bpp = fgl_pixel_bytes(fmt, type);
+    out     = fgl_pack_ptr(c, out);
+    if (fmt == GL_DEPTH_COMPONENT && out) { /* depth of the read framebuffer as GL_FLOAT / unsigned types */
+        fm_surface* d = fgl_read_depth(c);
+        if (!d) {
+            fgl_error(GL_INVALID_OPERATION);
+            return;
+        }
+        size_t es = type == GL_FLOAT || type == GL_UNSIGNED_INT ? 4 : (type == GL_UNSIGNED_SHORT ? 2 : 1);
+        size_t stride = ((size_t)w * es + (size_t)c->pack_align - 1) / (size_t)c->pack_align * (size_t)c->pack_align;
+        for (int r = 0; r < h; r++)
+            for (int i = 0; i < w; i++) {
+                int     sx = x + i, sy = y + r;
+                float   z  = sx >= 0 && sy >= 0 && sx < d->width && sy < d->height ? fgl_depth_at(d, sx, sy) : 1.0f;
+                uint8_t* o  = (uint8_t*)out + (size_t)r * stride + (size_t)i * es;
+                if (type == GL_FLOAT) memcpy(o, &z, 4);
+                else if (type == GL_UNSIGNED_INT) { uint32_t v = (uint32_t)((double)z * 4294967295.0); memcpy(o, &v, 4); }
+                else if (type == GL_UNSIGNED_SHORT) { uint16_t v = (uint16_t)(z * 65535.0f + 0.5f); memcpy(o, &v, 2); }
+                else *o = (uint8_t)(z * 255.0f + 0.5f);
+            }
         return;
     }
-    int    comps  = fmt == GL_RGBA || fmt == GL_BGRA ? 4 : 3;
-    size_t stride = ((size_t)w * (size_t)comps + (size_t)c->pack_align - 1) / (size_t)c->pack_align * (size_t)c->pack_align;
+    fm_surface* src = fgl_read_color(c);
+    if (!src || !bpp || !out) {
+        if (!bpp) fgl_unimplemented("glReadPixels (this format / type)");
+        else fgl_error(GL_INVALID_OPERATION);
+        return;
+    }
+    size_t stride = ((size_t)w * (size_t)bpp + (size_t)c->pack_align - 1) / (size_t)c->pack_align * (size_t)c->pack_align;
+    uint8_t* tmp  = (uint8_t*)malloc((size_t)w * 4);
+    if (!tmp) return;
     for (int r = 0; r < h; r++) {
-        int      sy  = y + r; /* rows bottom up, as GL returns them */
-        uint8_t* dst = (uint8_t*)out + (size_t)r * stride;
+        int sy = y + r; /* rows bottom up, as GL returns them */
         for (int i = 0; i < w; i++) {
             int      sx = x + i;
             uint32_t p  = sx >= 0 && sx < src->width && sy >= 0 && sy < src->height ? fm_surface_row32(src, sy)[sx] : 0; /* straight */
-            uint8_t  R = (uint8_t)(p >> 16), G = (uint8_t)(p >> 8), B = (uint8_t)p, A = (uint8_t)(p >> 24);
-            uint8_t* d = dst + (size_t)i * (size_t)comps;
-            if (fmt == GL_RGBA || fmt == GL_RGB) d[0] = R, d[1] = G, d[2] = B;
-            else d[0] = B, d[1] = G, d[2] = R;
-            if (comps == 4) d[3] = A;
+            tmp[4 * i] = (uint8_t)(p >> 16), tmp[4 * i + 1] = (uint8_t)(p >> 8), tmp[4 * i + 2] = (uint8_t)p, tmp[4 * i + 3] = (uint8_t)(p >> 24);
         }
+        fgl_rgba8_to_pixels(fmt, type, tmp, w, (uint8_t*)out + (size_t)r * stride);
     }
+    free(tmp);
 }

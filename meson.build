@@ -7,6 +7,7 @@ project('fatgl', 'c', 'cpp',
     'warning_level=2',
     'buildtype=release',
     'default_library=static',
+    'b_vscrt=mt', # MSVC: the static C runtime, a drop in DLL brings no runtime DLLs
   ])
 
 cc = meson.get_compiler('c')
@@ -40,6 +41,7 @@ sources = files(
   'src/gl_fbo.c',
   'src/gl_misc.c',
   'src/glsl_legacy.c',
+  'src/gl_pixels.c',
   'src/gen/gl_stubs.c',
   'src/gen/gl_procs.c',
 )
@@ -52,9 +54,9 @@ opengl32 = shared_library('opengl32', sources,
   c_args : args,
   include_directories : include_directories('include', 'src'),
   vs_module_defs : 'src/gen/opengl32.def',
-  dependencies : [fatmap_dep, glslang_dep],
+  dependencies : [fatmap_dep, glslang_dep, cc.find_library('gdi32'), cc.find_library('user32')],
   link_language : 'cpp',
-  link_args : static_rt + ['-lgdi32', '-luser32'],
+  link_args : static_rt,
   install : true)
 
 # examples: linked against the *system* opengl32 import library on purpose;
@@ -74,3 +76,10 @@ executable('glsl_probe', 'tools/glsl_probe.c',
   dependencies : [fatmap_dep, glslang_dep],
   link_language : 'cpp',
   link_args : static_rt)
+
+# tests: GL calls through the opengl32.dll in the build directory (a hidden window)
+gl_test = executable('gl_test', 'tests/gl_test.c',
+  c_args : args,
+  dependencies : [sys_gl, gdi, cc.find_library('user32')],
+  link_args : static_rt)
+test('gl_test', gl_test, workdir : meson.current_build_dir())

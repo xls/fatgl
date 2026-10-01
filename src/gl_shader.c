@@ -171,6 +171,8 @@ void APIENTRY glCompileShader(GLuint name)
     }
     glslang_shader_t* sh = s->src ? fgl_glslang_shader(s->type, s->src, 8, &s->log) : NULL;
     s->compiled          = sh != NULL;
+    if (!sh) fgl_log("shader %u (%s) does not compile:\n%s--- source ---\n%s\n--- end ---\n", name,
+                     s->type == GL_VERTEX_SHADER ? "vertex" : "fragment", s->log ? s->log : "", s->src ? s->src : "");
     if (sh) glslang_shader_delete(sh);
 }
 
@@ -648,6 +650,7 @@ void APIENTRY glLinkProgram(GLuint name)
             if (p->defsize[k]) p->def[k] = (uint8_t*)calloc(1, (size_t)p->defsize[k]);
         p->linked = 1;
     }
+    if (!p->linked) fgl_log("program %u does not link:\n%s\n", name, p->log ? p->log : "");
     for (int k = 0; k < 2; k++) {
         free(words[k]);
         if (sh[k]) glslang_shader_delete(sh[k]);

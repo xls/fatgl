@@ -493,6 +493,9 @@ fm_surface* fgl_read_color(fgl_ctx* c)
     return s && s->format == FM_FORMAT_ARGB32 ? s : NULL;
 }
 
+static fm_surface* fgl_fbo_depth(fgl_ctx* c, GLuint name);
+fm_surface*        fgl_read_depth(fgl_ctx* c) { return fgl_fbo_depth(c, c->read_fbo); }
+
 static fm_surface* fgl_fbo_depth(fgl_ctx* c, GLuint name)
 {
     fgl_fbo* f = fgl_fbo_get(c, name, 0);

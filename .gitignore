@@ -4,3 +4,4 @@
 /subprojects/packagecache/
 /subprojects/fatmap-src
 /probe_*.spv
+/dist/

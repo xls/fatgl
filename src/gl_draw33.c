@@ -346,7 +346,7 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
 void fgl_draw_program_imm(fgl_ctx* c, GLenum mode, const fgl_vtx* v, int n)
 {
     if (n <= 0) return;
-    __typeof__(c->va[0]) saved[4];
+    fgl_clarray saved[4];
     memcpy(saved, c->va, sizeof(saved));
     const float* src[4] = { v->pos, v->nrm, v->col, v->tex };
     int          size[4] = { 4, 3, 4, 2 };

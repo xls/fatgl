@@ -1536,19 +1536,6 @@ void APIENTRY glCompressedTexImage3D(GLenum target, GLint level, GLenum internal
     fgl_unimplemented("glCompressedTexImage3D");
 }
 
-void APIENTRY glCompressedTexImage2D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLint border, GLsizei imageSize, const void *data)
-{
-    (void)target;
-    (void)level;
-    (void)internalformat;
-    (void)width;
-    (void)height;
-    (void)border;
-    (void)imageSize;
-    (void)data;
-    fgl_unimplemented("glCompressedTexImage2D");
-}
-
 void APIENTRY glCompressedTexImage1D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data)
 {
     (void)target;
@@ -1575,20 +1562,6 @@ void APIENTRY glCompressedTexSubImage3D(GLenum target, GLint level, GLint xoffse
     (void)imageSize;
     (void)data;
     fgl_unimplemented("glCompressedTexSubImage3D");
-}
-
-void APIENTRY glCompressedTexSubImage2D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLsizei width, GLsizei height, GLenum format, GLsizei imageSize, const void *data)
-{
-    (void)target;
-    (void)level;
-    (void)xoffset;
-    (void)yoffset;
-    (void)width;
-    (void)height;
-    (void)format;
-    (void)imageSize;
-    (void)data;
-    fgl_unimplemented("glCompressedTexSubImage2D");
 }
 
 void APIENTRY glCompressedTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data)

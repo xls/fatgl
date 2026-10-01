@@ -7,7 +7,55 @@
  * copies the back buffer to the window with SetDIBitsToDevice.
  */
 #include "fgl.h"
+#include <stdarg.h>
 #include <stdio.h>
+
+/* ---- the log: fatgl.log next to the executable (FATGL_LOG=0: off,
+ * FATGL_LOG=<file>: elsewhere); the DLL that was loaded, contexts, calls
+ * that are not implemented, shader errors ---- */
+static FILE*            g_log;
+static int              g_log_state; /* 0 not opened yet, 1 open, -1 off */
+static CRITICAL_SECTION g_log_lock;
+
+static void fgl_log_open(void)
+{
+    const char* e = getenv("FATGL_LOG");
+    char        path[MAX_PATH], exe[MAX_PATH] = "", dll[MAX_PATH] = "";
+    g_log_state = -1;
+    if (e && !strcmp(e, "0")) return;
+    GetModuleFileNameA(NULL, exe, sizeof(exe));
+    HMODULE self = NULL;
+    GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)(void*)&fgl_log_open,
+                       &self);
+    GetModuleFileNameA(self, dll, sizeof(dll));
+    if (e && *e && strcmp(e, "1")) {
+        snprintf(path, sizeof(path), "%s", e);
+    } else {
+        snprintf(path, sizeof(path), "%s", exe);
+        char* slash = strrchr(path, 92 /* backslash */);
+        snprintf(slash ? slash + 1 : path, sizeof(path) - (size_t)(slash ? slash + 1 - path : 0), "fatgl.log");
+    }
+    g_log = fopen(path, "w");
+    if (!g_log) return;
+    InitializeCriticalSection(&g_log_lock);
+    g_log_state = 1;
+    fprintf(g_log, "fatgl 0.1.0 on fatmap %s (%s, %d bit)\n", fm_version_string(), fm_simd_name(fm_simd_best()), (int)sizeof(void*) * 8);
+    fprintf(g_log, "dll: %s\nexe: %s\n", dll, exe);
+    fflush(g_log);
+}
+
+void fgl_log(const char* fmt, ...)
+{
+    if (g_log_state == 0) fgl_log_open();
+    if (g_log_state != 1) return;
+    EnterCriticalSection(&g_log_lock);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(g_log, fmt, ap);
+    va_end(ap);
+    fflush(g_log);
+    LeaveCriticalSection(&g_log_lock);
+}
 
 /* ---- pixel formats ---- */
 typedef struct fgl_pf {
@@ -89,6 +137,10 @@ static HGLRC fgl_create(HDC hdc, int major, int minor, int core)
     c->hdc   = hdc;
     c->major = major, c->minor = minor, c->core = core;
     fgl_ctx_init(c);
+    int w, h;
+    fgl_client_size(hdc, &w, &h);
+    fgl_log("context %p: requested %d.%d %s, window %d x %d%s\n", (void*)c, major, minor, core ? "core" : "compatibility", w, h,
+            c->c3 ? "" : " FAILED");
     if (!c->c3) {
         free(c);
         return NULL;
@@ -359,14 +411,15 @@ BOOL WINAPI wglUseFontOutlinesW(HDC hdc, DWORD first, DWORD count, DWORD base, F
 /* ---- diagnostics ---- */
 void fgl_unimplemented(const char* name)
 {
-    static char seen[64][64];
+    static char seen[512][112];
     static int  nseen;
     fgl_error(GL_INVALID_OPERATION);
     for (int i = 0; i < nseen; i++)
         if (!strcmp(seen[i], name)) return;
-    if (nseen < 64) snprintf(seen[nseen++], sizeof(seen[0]), "%s", name);
-    char msg[128];
+    if (nseen < 512) snprintf(seen[nseen++], sizeof(seen[0]), "%s", name);
+    char msg[160];
     snprintf(msg, sizeof(msg), "fatgl: %s is not implemented yet\n", name);
     OutputDebugStringA(msg);
+    fgl_log("not implemented: %s\n", name);
     if (getenv("FATGL_VERBOSE")) fputs(msg, stderr);
 }

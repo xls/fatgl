@@ -617,14 +617,19 @@ int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
     case GL_MAX_COMBINED_VERTEX_UNIFORM_COMPONENTS: case GL_MAX_COMBINED_FRAGMENT_UNIFORM_COMPONENTS: v[0] = 16384 + 12 * 16384; return 1;
     case GL_MAX_VERTEX_UNIFORM_VECTORS: case GL_MAX_FRAGMENT_UNIFORM_VECTORS: v[0] = 4096; return 1;
     case GL_MAX_VARYING_VECTORS: v[0] = FM3D_MAX_SHADER_VARYINGS / 4; return 1;
-    case GL_NUM_COMPRESSED_TEXTURE_FORMATS: v[0] = 0; return 1;
+    case GL_NUM_COMPRESSED_TEXTURE_FORMATS: v[0] = fgl_ncompressed_formats; return 1;
+    case GL_COMPRESSED_TEXTURE_FORMATS:
+        for (int i = 0; i < fgl_ncompressed_formats; i++) v[i] = fgl_compressed_formats[i];
+        return fgl_ncompressed_formats;
     case GL_NUM_SHADER_BINARY_FORMATS: case GL_NUM_PROGRAM_BINARY_FORMATS: v[0] = 0; return 1;
     case GL_SUBPIXEL_BITS: v[0] = 4; return 1;
     case GL_DRAW_BUFFER: case GL_DRAW_BUFFER0: case GL_READ_BUFFER: v[0] = c->draw_fbo ? GL_COLOR_ATTACHMENT0 : GL_BACK; return 1;
     case GL_DOUBLEBUFFER: v[0] = 1; return 1;
     case GL_STEREO: v[0] = 0; return 1;
     case GL_UNPACK_ROW_LENGTH: v[0] = c->unpack_row; return 1;
-    case GL_UNPACK_SKIP_ROWS: case GL_UNPACK_SKIP_PIXELS: case GL_UNPACK_IMAGE_HEIGHT: case GL_UNPACK_SKIP_IMAGES:
+    case GL_UNPACK_SKIP_ROWS: v[0] = c->unpack_skip_rows; return 1;
+    case GL_UNPACK_SKIP_PIXELS: v[0] = c->unpack_skip_pixels; return 1;
+    case GL_UNPACK_IMAGE_HEIGHT: case GL_UNPACK_SKIP_IMAGES:
     case GL_PACK_ROW_LENGTH: case GL_PACK_SKIP_ROWS: case GL_PACK_SKIP_PIXELS: case GL_PACK_IMAGE_HEIGHT:
     case GL_PACK_SKIP_IMAGES: case GL_UNPACK_SWAP_BYTES: case GL_UNPACK_LSB_FIRST: case GL_PACK_SWAP_BYTES:
     case GL_PACK_LSB_FIRST:

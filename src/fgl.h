@@ -260,6 +260,15 @@ typedef struct fgl_list {
     int     nops, cap;
 } fgl_list;
 
+typedef struct fgl_clarray { /* a client vertex array (glVertexPointer & co.) */
+    int         on;
+    GLint       size;
+    GLenum      type;
+    GLsizei     stride;
+    const void* ptr;
+    GLuint      buffer; /* GL_ARRAY_BUFFER when the pointer was set: ptr is an offset */
+} fgl_clarray;
+
 typedef struct fgl_ctx {
     HDC          hdc;
     fm3d_ctx*    c3;
@@ -286,7 +295,7 @@ typedef struct fgl_ctx {
     GLenum   alpha_func;
     float    alpha_ref;
     float    poly_factor, poly_units;
-    int      unpack_align, unpack_row, pack_align;
+    int      unpack_align, unpack_row, pack_align, unpack_skip_rows, unpack_skip_pixels;
 
     /* matrices */
     GLenum  matrix_mode;
@@ -372,20 +381,14 @@ typedef struct fgl_ctx {
     float  attr_value[FGL_ATTRIBS][4]; /* generic attribute values (glVertexAttrib*) */
 
     /* client vertex arrays: vertex, normal, color, texcoord */
-    struct {
-        int         on;
-        GLint       size;
-        GLenum      type;
-        GLsizei     stride;
-        const void* ptr;
-        GLuint      buffer; /* GL_ARRAY_BUFFER when the pointer was set: ptr is an offset */
-    } va[4];
+    fgl_clarray va[4];
 #define FGL_BOUND_TEX(c) ((c)->unit_tex[(c)->active_unit])
 } fgl_ctx;
 
 fgl_ctx* fgl_cur(void);
 void     fgl_error(GLenum e);
 void     fgl_unimplemented(const char* name);
+void     fgl_log(const char* fmt, ...); /* fatgl.log (wgl.c) */
 void     fgl_ctx_init(fgl_ctx* c);
 void     fgl_ctx_free(fgl_ctx* c);
 int      fgl_resize(fgl_ctx* c, int w, int h);
@@ -410,6 +413,17 @@ void      fgl_draw_program_imm(fgl_ctx* c, GLenum mode, const fgl_vtx* v, int n)
 
 /* gl_misc.c: stencil state into fatmap, glGet values kept there (0: not one), cleanup */
 void fgl_sync_stencil(fgl_ctx* c);
+/* gl_pixels.c: client pixel data <-> straight RGBA8, compressed textures, pixel buffers */
+int         fgl_pixel_bytes(GLenum fmt, GLenum type); /* 0: unsupported */
+void        fgl_pixels_to_rgba8(GLenum fmt, GLenum type, const uint8_t* src, int n, uint8_t* rgba);
+int         fgl_rgba8_to_pixels(GLenum fmt, GLenum type, const uint8_t* rgba, int n, uint8_t* dst);
+int         fgl_compressed_block_bytes(GLenum ifmt);
+int         fgl_decompress(GLenum ifmt, const uint8_t* data, size_t size, int w, int h, uint8_t* rgba);
+const void* fgl_unpack_ptr(fgl_ctx* c, const void* pixels);
+void*       fgl_pack_ptr(fgl_ctx* c, void* pixels);
+fm_surface* fgl_read_depth(fgl_ctx* c);
+extern const GLenum fgl_compressed_formats[];
+extern const int    fgl_ncompressed_formats;
 /* glsl_legacy.c: legacy GLSL rewritten for glslang (NULL: no change), the fgl_Builtins block */
 char* fgl_glsl_upgrade(const char* src, GLenum stage, int ntexcoords, int* uses_builtins);
 int   fgl_glsl_texcoords(const char* src);

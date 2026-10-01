@@ -77,56 +77,38 @@ void APIENTRY glBindTexture(GLenum target, GLuint name)
     FGL_BOUND_TEX(c) = name;
 }
 
-/* one texel of client memory -> straight RGBA 0..255 */
-static void fgl_texel(GLenum fmt, GLenum type, const uint8_t* p, int x, uint8_t* o)
-{
-    uint8_t r = 0, g = 0, b = 0, a = 255;
-    if (type == GL_FLOAT) {
-        const float* f = (const float*)p;
-#define FGL_F(i) (uint8_t)(f[i] <= 0 ? 0 : (f[i] >= 1 ? 255 : f[i] * 255.0f + 0.5f))
-        switch (fmt) {
-        case GL_RGBA: r = FGL_F(4 * x), g = FGL_F(4 * x + 1), b = FGL_F(4 * x + 2), a = FGL_F(4 * x + 3); break;
-        case GL_RGB: r = FGL_F(3 * x), g = FGL_F(3 * x + 1), b = FGL_F(3 * x + 2); break;
-        default: r = g = b = FGL_F(x); break;
-        }
-#undef FGL_F
-    } else {
-        switch (fmt) {
-        case GL_RGBA: r = p[4 * x], g = p[4 * x + 1], b = p[4 * x + 2], a = p[4 * x + 3]; break;
-        case GL_BGRA: b = p[4 * x], g = p[4 * x + 1], r = p[4 * x + 2], a = p[4 * x + 3]; break;
-        case GL_RGB: r = p[3 * x], g = p[3 * x + 1], b = p[3 * x + 2]; break;
-        case GL_BGR: b = p[3 * x], g = p[3 * x + 1], r = p[3 * x + 2]; break;
-        case GL_LUMINANCE: r = g = b = p[x]; break;
-        case GL_LUMINANCE_ALPHA: r = g = b = p[2 * x], a = p[2 * x + 1]; break;
-        case GL_ALPHA: r = g = b = 255, a = p[x]; break;
-        case GL_RED: r = p[x], g = b = 0; break;
-        case GL_RG: r = p[2 * x], g = p[2 * x + 1], b = 0; break;
-        default: r = g = b = p[x]; break;
-        }
-    }
-    o[0] = r, o[1] = g, o[2] = b, o[3] = a;
-}
-
-static int fgl_texel_bytes(GLenum fmt, GLenum type)
-{
-    int comps = fmt == GL_RGBA || fmt == GL_BGRA ? 4 : (fmt == GL_RGB || fmt == GL_BGR ? 3 : (fmt == GL_LUMINANCE_ALPHA || fmt == GL_RG ? 2 : 1));
-    return comps * (type == GL_FLOAT ? 4 : 1);
-}
-
-/* copy client pixels (unpack alignment / row length) into rows of s */
+/* copy client pixels (unpack alignment / row length / skips, pixel unpack
+ * buffer) into rows of s, as straight RGBA8 */
 static void fgl_upload(fgl_ctx* c, fm_surface* s, int x0, int y0, int w, int h, GLenum fmt, GLenum type, const void* pixels)
 {
-    int    bpp = fgl_texel_bytes(fmt, type), rowpx = c->unpack_row > 0 ? c->unpack_row : w;
+    pixels  = fgl_unpack_ptr(c, pixels);
+    int bpp = fgl_pixel_bytes(fmt, type);
+    if (!pixels || !bpp) {
+        if (!bpp) fgl_unimplemented("glTexImage2D / glTexSubImage2D (this format / type)");
+        return;
+    }
+    int    rowpx  = c->unpack_row > 0 ? c->unpack_row : w;
     size_t stride = (size_t)rowpx * (size_t)bpp;
     stride        = (stride + (size_t)c->unpack_align - 1) / (size_t)c->unpack_align * (size_t)c->unpack_align;
+    const uint8_t* base = (const uint8_t*)pixels + (size_t)c->unpack_skip_rows * stride + (size_t)c->unpack_skip_pixels * (size_t)bpp;
     for (int y = 0; y < h; y++) {
-        const uint8_t* row = (const uint8_t*)pixels + (size_t)y * stride;
-        uint32_t*      d   = fm_surface_row32(s, y0 + y) + x0;
-        for (int x = 0; x < w; x++) {
-            uint8_t t[4];
-            fgl_texel(fmt, type, row, x, t);
-            d[x] = FM_RGBA(t[0], t[1], t[2], t[3]); /* straight, as GL samples it */
+        uint32_t* d = fm_surface_row32(s, y0 + y) + x0;
+        uint8_t   tmp[4 * 256];
+        for (int x = 0; x < w; x += 256) {
+            int n = w - x < 256 ? w - x : 256;
+            fgl_pixels_to_rgba8(fmt, type, base + (size_t)y * stride + (size_t)x * (size_t)bpp, n, tmp);
+            for (int i = 0; i < n; i++) d[x + i] = FM_RGBA(tmp[4 * i], tmp[4 * i + 1], tmp[4 * i + 2], tmp[4 * i + 3]);
         }
+    }
+}
+
+/* a decoded RGBA8 image into rows of s */
+static void fgl_put_rgba8(fm_surface* s, int x0, int y0, int w, int h, const uint8_t* rgba)
+{
+    for (int y = 0; y < h; y++) {
+        uint32_t*      d = fm_surface_row32(s, y0 + y) + x0;
+        const uint8_t* p = rgba + (size_t)y * (size_t)w * 4;
+        for (int x = 0; x < w; x++) d[x] = FM_RGBA(p[4 * x], p[4 * x + 1], p[4 * x + 2], p[4 * x + 3]);
     }
 }
 
@@ -143,10 +125,6 @@ void APIENTRY glTexImage2D(GLenum target, GLint level, GLint ifmt, GLsizei w, GL
         return;
     }
     int depth = fmt == GL_DEPTH_COMPONENT || fmt == GL_DEPTH_STENCIL;
-    if (!depth && type != GL_UNSIGNED_BYTE && type != GL_FLOAT) {
-        fgl_unimplemented("glTexImage2D (pixel types other than GL_UNSIGNED_BYTE / GL_FLOAT)");
-        return;
-    }
     if (level > 0) return; /* mipmaps come from level 0 */
     fgl_tex* t = FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 1) : NULL;
     if (!t) {
@@ -166,6 +144,7 @@ void APIENTRY glTexImage2D(GLenum target, GLint level, GLint ifmt, GLsizei w, GL
         fm_format f = ifmt == GL_DEPTH_COMPONENT16 ? FM_FORMAT_D16
                       : (ifmt == GL_DEPTH_COMPONENT32F || ifmt == GL_DEPTH_COMPONENT32) ? FM_FORMAT_D32F : FM_FORMAT_D24S8;
         t->depth = fm_surface_create(w, h, f);
+        pixels = fgl_unpack_ptr(c, pixels);
         if (t->depth && pixels && type == GL_FLOAT && fmt == GL_DEPTH_COMPONENT && f == FM_FORMAT_D32F)
             for (int y = 0; y < h; y++) memcpy(fm_surface_rowf(t->depth, y), (const float*)pixels + (size_t)y * (size_t)w, (size_t)w * 4);
         else if (pixels)
@@ -193,6 +172,51 @@ void APIENTRY glTexSubImage2D(GLenum target, GLint level, GLint x, GLint y, GLsi
     fgl_flush(c);
     fgl_upload(c, t->level0, x, y, w, h, fmt, type, pixels);
     fm3d_texture_release(t->tex); /* rebuilt (with its mipmaps) on the next use */
+    t->tex = NULL;
+}
+
+/* compressed images are decoded to RGBA8 (S3TC / RGTC; level 0, mipmaps come from it) */
+void APIENTRY glCompressedTexImage2D(GLenum target, GLint level, GLenum ifmt, GLsizei w, GLsizei h, GLint border, GLsizei size,
+                                     const void* data)
+{
+    FGL_CTX_OR_RETURN(c);
+    if (!fgl_compressed_block_bytes(ifmt)) {
+        fgl_error(GL_INVALID_ENUM);
+        return;
+    }
+    if (level > 0) return;
+    glTexImage2D(target, level, (GLint)ifmt, w, h, border, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    fgl_tex* t = FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 0) : NULL;
+    data       = fgl_unpack_ptr(c, data);
+    if (!t || !t->level0 || !data) return;
+    uint8_t* rgba = (uint8_t*)malloc((size_t)w * (size_t)h * 4);
+    if (!rgba) {
+        fgl_error(GL_OUT_OF_MEMORY);
+        return;
+    }
+    if (fgl_decompress(ifmt, (const uint8_t*)data, (size_t)size, w, h, rgba)) fgl_put_rgba8(t->level0, 0, 0, w, h, rgba);
+    else fgl_error(GL_INVALID_VALUE);
+    free(rgba);
+}
+
+void APIENTRY glCompressedTexSubImage2D(GLenum target, GLint level, GLint x, GLint y, GLsizei w, GLsizei h, GLenum fmt, GLsizei size,
+                                        const void* data)
+{
+    FGL_CTX_OR_RETURN(c);
+    fgl_tex* t = target == GL_TEXTURE_2D && FGL_BOUND_TEX(c) ? fgl_texture(c, FGL_BOUND_TEX(c), 0) : NULL;
+    if (level > 0) return;
+    if (!t || !t->level0 || !fgl_compressed_block_bytes(fmt) || x < 0 || y < 0 || x + w > t->level0->width ||
+        y + h > t->level0->height) {
+        fgl_error(GL_INVALID_OPERATION);
+        return;
+    }
+    data          = fgl_unpack_ptr(c, data);
+    uint8_t* rgba = data ? (uint8_t*)malloc((size_t)w * (size_t)h * 4) : NULL;
+    if (!rgba) return;
+    fgl_flush(c);
+    if (fgl_decompress(fmt, (const uint8_t*)data, (size_t)size, w, h, rgba)) fgl_put_rgba8(t->level0, x, y, w, h, rgba);
+    free(rgba);
+    fm3d_texture_release(t->tex);
     t->tex = NULL;
 }
 
@@ -338,28 +362,26 @@ void APIENTRY glGetTexImage(GLenum target, GLint level, GLenum fmt, GLenum type,
         fgl_unimplemented("glGetTexImage (levels other than 0)");
         return;
     }
-    int comps = fmt == GL_RGBA || fmt == GL_BGRA ? 4 : (fmt == GL_RGB || fmt == GL_BGR ? 3 : 0);
-    if (!comps || (type != GL_UNSIGNED_BYTE && type != GL_FLOAT)) {
-        fgl_unimplemented("glGetTexImage (formats other than RGB(A) / BGR(A), types other than unsigned byte / float)");
+    int bpp = fgl_pixel_bytes(fmt, type);
+    out     = fgl_pack_ptr(c, out);
+    if (!bpp || !out) {
+        if (!bpp) fgl_unimplemented("glGetTexImage (this format / type)");
         return;
     }
     if (t->rendered) fgl_flush(c);
-    const fm_surface* s     = t->level0;
-    size_t            esz   = type == GL_FLOAT ? 4 : 1;
-    size_t            stride = ((size_t)s->width * (size_t)comps * esz + (size_t)c->pack_align - 1) / (size_t)c->pack_align * (size_t)c->pack_align;
+    const fm_surface* s      = t->level0;
+    size_t            stride = ((size_t)s->width * (size_t)bpp + (size_t)c->pack_align - 1) / (size_t)c->pack_align * (size_t)c->pack_align;
     for (int y = 0; y < s->height; y++) {
         const uint32_t* r = fm_surface_row32(s, y);
-        uint8_t*        d = (uint8_t*)out + (size_t)y * stride;
-        for (int x = 0; x < s->width; x++) {
-            uint8_t ch[4] = { (uint8_t)(r[x] >> 16), (uint8_t)(r[x] >> 8), (uint8_t)r[x], (uint8_t)(r[x] >> 24) };
-            if (fmt == GL_BGRA || fmt == GL_BGR) {
-                uint8_t tmp = ch[0];
-                ch[0] = ch[2], ch[2] = tmp;
+        uint8_t         tmp[4 * 256];
+        for (int x = 0; x < s->width; x += 256) {
+            int n = s->width - x < 256 ? s->width - x : 256;
+            for (int i = 0; i < n; i++) {
+                uint32_t p     = r[x + i];
+                tmp[4 * i]     = (uint8_t)(p >> 16), tmp[4 * i + 1] = (uint8_t)(p >> 8), tmp[4 * i + 2] = (uint8_t)p;
+                tmp[4 * i + 3] = (uint8_t)(p >> 24);
             }
-            for (int k = 0; k < comps; k++) {
-                if (type == GL_FLOAT) ((float*)d)[(size_t)x * (size_t)comps + (size_t)k] = (float)ch[k] / 255.0f;
-                else d[(size_t)x * (size_t)comps + (size_t)k] = ch[k];
-            }
+            fgl_rgba8_to_pixels(fmt, type, tmp, n, (uint8_t*)out + (size_t)y * stride + (size_t)x * (size_t)bpp);
         }
     }
 }
