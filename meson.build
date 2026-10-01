@@ -77,6 +77,12 @@ foreach ex : ['triangle', 'gears', 'cube33', 'fbo33', 'blend', 'prims', 'legacy'
     win_subsystem : 'windows')
 endforeach
 
+# benchmark: Doom 3 BFG style light interactions (tools/bench; bench_interaction.py runs the same scene on Mesa llvmpipe)
+executable('bench_interaction', 'tools/bench/bench_interaction.c',
+  c_args : args,
+  dependencies : [sys_gl, gdi, cc.find_library('user32')],
+  link_args : static_rt)
+
 # dev tool: what fatmap accepts of glslang's output for GL GLSL
 executable('glsl_probe', 'tools/glsl_probe.c',
   dependencies : [fatmap_dep, glslang_dep],

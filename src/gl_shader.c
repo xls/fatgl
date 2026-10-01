@@ -225,6 +225,39 @@ void APIENTRY glGetShaderSource(GLuint name, GLsizei max, GLsizei* len, GLchar* 
     if (s) fgl_copy_log(s->src, max, len, out);
 }
 
+/* debugging: FATGL_DUMP_SPIRV=<dir> writes each linked program's SPIR-V as
+ * <dir>/prog<name>_vs.spv / _fs.spv; FATGL_LOAD_SPIRV=<dir> uses such files
+ * instead when they exist (e.g. after spirv-opt) */
+static void fgl_spirv_debug_io(GLuint name, uint32_t** words, size_t* nw)
+{
+    static const char* stage[2] = { "vs", "fs" };
+    const char*        dump = getenv("FATGL_DUMP_SPIRV");
+    const char*        load = getenv("FATGL_LOAD_SPIRV");
+    for (int k = 0; k < 2; k++) {
+        char path[600];
+        if (dump && words[k]) {
+            snprintf(path, sizeof(path), "%s/prog%u_%s.spv", dump, name, stage[k]);
+            FILE* f = fopen(path, "wb");
+            if (f) fwrite(words[k], 4, nw[k], f), fclose(f);
+        }
+        if (load) {
+            snprintf(path, sizeof(path), "%s/prog%u_%s.spv", load, name, stage[k]);
+            FILE* f = fopen(path, "rb");
+            if (!f) continue;
+            fseek(f, 0, SEEK_END);
+            long n = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            uint32_t* w = n > 0 ? (uint32_t*)malloc((size_t)n) : NULL;
+            if (w && fread(w, 1, (size_t)n, f) == (size_t)n) {
+                free(words[k]);
+                words[k] = w, nw[k] = (size_t)n / 4;
+                fgl_log("program %u: %s SPIR-V from %s\n", name, stage[k], path);
+            } else free(w);
+            fclose(f);
+        }
+    }
+}
+
 /* ---- programs ---- */
 GLuint APIENTRY glCreateProgram(void)
 {
@@ -698,6 +731,7 @@ void APIENTRY glLinkProgram(GLuint name)
         else glslang_program_SPIRV_get(gp, words[k]);
     }
     if (ok) fgl_unique_block_bindings(words, nw);
+    if (ok) fgl_spirv_debug_io(p->name, words, nw);
     if (ok) {
         p->max_loc = -1;
         fgl_reflect(p, 0, words[0], nw[0]);
@@ -710,6 +744,10 @@ void APIENTRY glLinkProgram(GLuint name)
                                                                                 at[na].offset = 16 * p->in[i].location, na++;
         char err[256];
         p->sp = fm3d_spirv_create(words[0], nw[0], words[1], nw[1], at, na, err, sizeof(err));
+        /* GPU like math precision (GPUs approximate sin / exp / pow too; ~1.2x on math heavy shaders);
+         * FATGL_PRECISE_MATH=1: within 1 ulp */
+        const char* pm = getenv("FATGL_PRECISE_MATH");
+        if (p->sp) fm3d_spirv_set_fast_math(p->sp, !(pm && pm[0] == '1'));
         if (!p->sp) {
             fgl_log_append(p, "fatgl: ");
             fgl_log_append(p, err);

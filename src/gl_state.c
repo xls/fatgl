@@ -9,7 +9,8 @@ static const float g_ident[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 
 void fgl_ctx_init(fgl_ctx* c)
 {
     c->c3 = fm3d_create();
-    c->ex = fm_executor_create(0); /* every core; NULL without threads */
+    const char* nt = getenv("FATGL_THREADS"); /* default: every core */
+    c->ex          = fm_executor_create(nt ? atoi(nt) : 0); /* NULL without threads */
     if (!c->c3) return;
     if (c->ex) {
         fm3d_set_executor(c->c3, c->ex);

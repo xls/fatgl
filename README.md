@@ -32,7 +32,7 @@ executable: the DLL that was loaded (so you can tell it is fatgl), the
 contexts the application created, every unimplemented call it made (once
 each) and shader compile / link errors with their source.
 `FATGL_LOG=0` turns it off, `FATGL_LOG=<file>` writes elsewhere,
-`FATGL_VERBOSE=1` also prints unimplemented calls on stderr. `GL_RENDERER`
+`FATGL_VERBOSE=1` also prints unimplemented calls on stderr. `FATGL_THREADS=<n>` sets the render threads (default: every core), `FATGL_PRECISE_MATH=1` evaluates shader math within 1 ulp instead of GPU-like precision. `FATGL_DUMP_SPIRV=<dir>` writes every linked program's SPIR-V, `FATGL_LOAD_SPIRV=<dir>` uses such files instead (e.g. after `spirv-opt`). `tools/bench`: a Doom 3 BFG style benchmark for fatgl and Mesa llvmpipe. `GL_RENDERER`
 reads "fatgl on fatmap ...".
 
 ### Plan
