@@ -485,6 +485,43 @@ static void test_frag_depth(void)
     glDisable(GL_DEPTH_TEST);
 }
 
+/* a vertex shader alone (Doom 3 BFG's shadow.vp): stencil only, colors masked */
+static void test_vertex_only(void)
+{
+    const char* vs = "#version 150\n"
+                     "in vec4 pos;\n"
+                     "void main() { gl_Position = vec4(pos.xy * 0.5, 0.0, 1.0); }\n";
+    GLuint p = glCreateProgram_();
+    glAttachShader_(p, compile(GL_VERTEX_SHADER, vs));
+    glLinkProgram_(p);
+    GLint ok = 0;
+    glGetProgramiv_(p, GL_LINK_STATUS, &ok);
+    CHECK(ok, "a vertex shader alone links");
+    if (!ok) return;
+    glMatrixMode(GL_PROJECTION), glLoadIdentity(), glMatrixMode(GL_MODELVIEW), glLoadIdentity();
+    glClearColor(0, 0, 0, 1);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_STENCIL_TEST);
+    glStencilFunc(GL_ALWAYS, 0, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_INCR);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glUseProgram_(p);
+    glBegin(GL_QUADS); /* the middle half of the window */
+    glVertex2f(-1, -1), glVertex2f(1, -1), glVertex2f(1, 1), glVertex2f(-1, 1);
+    glEnd();
+    glUseProgram_(0);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glStencilFunc(GL_EQUAL, 1, 0xFF);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_KEEP);
+    glColor3f(0, 1, 0);
+    glBegin(GL_QUADS);
+    glVertex2f(-1, -1), glVertex2f(1, -1), glVertex2f(1, 1), glVertex2f(-1, 1);
+    glEnd();
+    glDisable(GL_STENCIL_TEST);
+    CHECK(px(32, 32) == 0xFF00FF00u && px(4, 4) == 0xFF000000u, "vertex shader only: stencil (%08x %08x)", px(32, 32), px(4, 4));
+}
+
 static void test_legacy_glsl(void)
 {
     /* GLSL 1.10 with the fixed function state */
@@ -555,6 +592,7 @@ int main(void)
     test_bfg_glsl();
     test_texture_proj();
     test_frag_depth();
+    test_vertex_only();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);

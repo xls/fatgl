@@ -622,13 +622,34 @@ void APIENTRY glLinkProgram(GLuint name)
         if (!s) continue;
         if (s->type == GL_GEOMETRY_SHADER) {
             fgl_log_append(p, "fatgl: geometry shaders are not supported yet\n");
+            fgl_log("program %u does not link: geometry shaders are not supported yet\n", name);
             return;
         }
         st[s->type == GL_FRAGMENT_SHADER] = s;
     }
-    if (!st[0] || !st[1]) {
-        fgl_log_append(p, "fatgl: a program needs a vertex and a fragment shader\n");
+    /* one stage only: GL runs the fixed function for the other (Doom 3's
+     * shadow volumes link a vertex shader alone, colors masked) */
+    static fgl_shader fixed_stage[2];
+    if (!st[0] && !st[1]) {
+        fgl_log_append(p, "fatgl: the program has no shaders\n");
+        fgl_log("program %u does not link: no shaders\n", name);
         return;
+    }
+    if (!st[1]) {
+        int         legacy_color = st[0]->src && strstr(st[0]->src, "gl_FrontColor");
+        fgl_shader* f            = &fixed_stage[1];
+        memset(f, 0, sizeof(*f));
+        f->type = GL_FRAGMENT_SHADER;
+        f->src  = legacy_color ? (char*)"void main() { gl_FragColor = gl_Color; }\n"
+                               : (char*)"#version 330 core\nout vec4 fgl_fixed_color;\nvoid main() { fgl_fixed_color = vec4(1.0); }\n";
+        st[1]   = f;
+    }
+    if (!st[0]) {
+        fgl_shader* v = &fixed_stage[0];
+        memset(v, 0, sizeof(*v));
+        v->type = GL_VERTEX_SHADER;
+        v->src  = (char*)"void main() { gl_Position = ftransform(); gl_FrontColor = gl_Color; gl_TexCoord[0] = gl_MultiTexCoord0; }\n";
+        st[0]   = v;
     }
     glslang_shader_t*  sh[2] = { NULL, NULL };
     glslang_program_t* gp    = NULL;
