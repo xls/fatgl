@@ -56,6 +56,8 @@ GLFN(void, glLinkProgram, (GLuint))
 GLFN(void, glGetProgramiv, (GLuint, GLenum, GLint*))
 GLFN(void, glGetProgramInfoLog, (GLuint, GLsizei, GLsizei*, GLchar*))
 GLFN(void, glUseProgram, (GLuint))
+GLFN(GLint, glGetUniformLocation, (GLuint, const GLchar*))
+GLFN(void, glUniform1f, (GLint, GLfloat))
 GLFN(void, glActiveTextureARB, (GLenum))
 GLFN(void, glGenProgramsARB, (GLsizei, GLuint*))
 GLFN(void, glBindProgramARB, (GLenum, GLuint))
@@ -442,6 +444,47 @@ static void test_texture_proj(void)
     glDeleteTextures(1, &t);
 }
 
+/* gl_FragDepth (Doom 3 BFG's zcullReconstruct): the shader's depth decides */
+static void test_frag_depth(void)
+{
+    const char* vs = "#version 150\n"
+                     "in vec4 pos;\n"
+                     "void main() { gl_Position = vec4(pos.xy, 0.8, 1.0); }\n"; /* behind the plain quad */
+    const char* fs = "#version 150\n"
+                     "uniform float d;\n"
+                     "out vec4 col;\n"
+                     "void main() { gl_FragDepth = d; col = vec4(0.0, 1.0, 0.0, 1.0); }\n";
+    GLuint p = glCreateProgram_();
+    glAttachShader_(p, compile(GL_VERTEX_SHADER, vs));
+    glAttachShader_(p, compile(GL_FRAGMENT_SHADER, fs));
+    glLinkProgram_(p);
+    GLint ok = 0;
+    glGetProgramiv_(p, GL_LINK_STATUS, &ok);
+    CHECK(ok, "gl_FragDepth program links");
+    if (!ok) return;
+    glMatrixMode(GL_PROJECTION), glLoadIdentity(), glMatrixMode(GL_MODELVIEW), glLoadIdentity();
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    for (int pass = 0; pass < 2; pass++) {
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glColor3f(1, 0, 0);
+        glBegin(GL_QUADS); /* red at window depth 0.5 */
+        glVertex3f(-1, -1, 0), glVertex3f(1, -1, 0), glVertex3f(1, 1, 0), glVertex3f(-1, 1, 0);
+        glEnd();
+        glUseProgram_(p);
+        GLint loc = glGetUniformLocation_(p, "d");
+        glUniform1f_(loc, pass ? 0.75f : 0.25f);
+        glBegin(GL_QUADS);
+        glVertex2f(-1, -1), glVertex2f(1, -1), glVertex2f(1, 1), glVertex2f(-1, 1);
+        glEnd();
+        glUseProgram_(0);
+        uint32_t c = px(32, 32);
+        CHECK(c == (pass ? 0xFF0000FFu : 0xFF00FF00u), "gl_FragDepth %s (%08x)", pass ? "0.75 is hidden" : "0.25 is in front", c);
+    }
+    glDisable(GL_DEPTH_TEST);
+}
+
 static void test_legacy_glsl(void)
 {
     /* GLSL 1.10 with the fixed function state */
@@ -497,6 +540,7 @@ int main(void)
     LOAD(glCompressedTexImage2D), LOAD(glGenQueries), LOAD(glBeginQuery), LOAD(glEndQuery), LOAD(glGetQueryObjectuiv);
     LOAD(glCreateShader), LOAD(glShaderSource), LOAD(glCompileShader), LOAD(glGetShaderiv), LOAD(glGetShaderInfoLog);
     LOAD(glCreateProgram), LOAD(glAttachShader), LOAD(glLinkProgram), LOAD(glGetProgramiv), LOAD(glGetProgramInfoLog);
+    LOAD(glGetUniformLocation), LOAD(glUniform1f);
     LOAD(glUseProgram), LOAD(glActiveTextureARB), LOAD(glMultiTexCoord2fARB);
     LOAD(glGenProgramsARB), LOAD(glBindProgramARB), LOAD(glProgramStringARB), LOAD(glProgramEnvParameter4fARB);
     LOAD(glProgramLocalParameter4fARB);
@@ -510,6 +554,7 @@ int main(void)
     test_legacy_glsl();
     test_bfg_glsl();
     test_texture_proj();
+    test_frag_depth();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);
