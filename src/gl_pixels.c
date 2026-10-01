@@ -88,6 +88,29 @@ int fgl_pixel_bytes(GLenum fmt, GLenum type)
     return n * fgl_type_size(type);
 }
 
+int fgl_swap_unit(GLenum type)
+{
+    if (type == GL_UNSIGNED_INT_10F_11F_11F_REV || type == GL_UNSIGNED_INT_5_9_9_9_REV || type == GL_UNSIGNED_INT_24_8 ||
+        type == GL_FLOAT_32_UNSIGNED_INT_24_8_REV)
+        return 4;
+    const fgl_packed* pk = fgl_packed_of(type);
+    return pk ? pk->bytes : fgl_type_size(type);
+}
+
+void fgl_swap_bytes(uint8_t* p, size_t n, int unit)
+{
+    if (unit == 2)
+        for (size_t i = 0; i + 1 < n; i += 2) {
+            uint8_t t = p[i];
+            p[i] = p[i + 1], p[i + 1] = t;
+        }
+    else if (unit == 4)
+        for (size_t i = 0; i + 3 < n; i += 4) {
+            uint8_t t0 = p[i], t1 = p[i + 1];
+            p[i] = p[i + 3], p[i + 1] = p[i + 2], p[i + 2] = t1, p[i + 3] = t0;
+        }
+}
+
 static float fgl_half2f(uint16_t h)
 {
     uint32_t s = (uint32_t)(h >> 15) << 31, e = (h >> 10) & 31, m = h & 1023, u;

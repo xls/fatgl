@@ -321,6 +321,8 @@ void APIENTRY glPixelStorei(GLenum p, GLint v)
     else if (p == GL_PACK_ALIGNMENT) c->pack_align = v > 0 ? v : 1;
     else if (p == GL_UNPACK_SKIP_ROWS) c->unpack_skip_rows = v > 0 ? v : 0;
     else if (p == GL_UNPACK_SKIP_PIXELS) c->unpack_skip_pixels = v > 0 ? v : 0;
+    else if (p == GL_UNPACK_SWAP_BYTES) c->unpack_swap = v != 0; /* Doom 3 BFG: big endian RGB565 light images */
+    else if (p == GL_PACK_SWAP_BYTES) c->pack_swap = v != 0;
 }
 void APIENTRY glHint(GLenum target, GLenum mode) { (void)target, (void)mode; }
 void APIENTRY glPolygonMode(GLenum face, GLenum mode)

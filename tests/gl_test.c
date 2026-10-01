@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "bfg_shaders.h"
@@ -1011,9 +1012,76 @@ static void test_border_and_formats(void)
     full_quad();
     uint32_t rgb = px(32, 32);
     glUseProgram_(0);
+    /* Doom 3 BFG's light images: big endian RGB565 with GL_UNPACK_SWAP_BYTES */
+    uint16_t c565 = (uint16_t)(20u << 11 | 40u << 5 | 10u);
+    uint8_t  be[2] = { (uint8_t)(c565 >> 8), (uint8_t)c565 };
+    glPixelStorei(0x0CF0 /* GL_UNPACK_SWAP_BYTES */, GL_TRUE);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, be);
+    glPixelStorei(0x0CF0, GL_FALSE);
+    glUseProgram_(p);
+    full_quad();
+    glUseProgram_(0);
+    uint32_t sw = px(32, 32), want565 = 0xFF000000u | (10u * 255 / 31) << 16 | (40u * 255 / 63) << 8 | (20u * 255 / 31);
+    CHECK(close_to(sw, want565, 1), "GL_UNPACK_SWAP_BYTES RGB565 (%08x want %08x)", sw, want565);
     CHECK(it == 0x60606060u, "GL_INTENSITY8 from luminance (%08x)", it);
     CHECK(rgb == 0xFF804020u, "GL_RGB keeps no alpha (%08x)", rgb);
     glDeleteTextures(3, t);
+}
+
+/* bilinear magnification of a gray ramp keeps r == g == b (Doom 3's falloff and
+ * spot light images are tiny and magnified; plain, projective and clamped to border) */
+static void test_bilinear_gray(void)
+{
+    static const char* fs[3] = { "#version 150\n"
+                                 "uniform sampler2D tex;\n"
+                                 "out vec4 col;\n"
+                                 "void main() { col = texture(tex, vec2(gl_FragCoord.x / 64.0 * 1.4 - 0.2, 0.3)); }\n",
+                                 "#version 150\n"
+                                 "uniform sampler2D tex;\n"
+                                 "out vec4 col;\n"
+                                 "void main() { float q = 0.5 + gl_FragCoord.y / 64.0; col = textureProj(tex, vec3((gl_FragCoord.x / 64.0) * q, 0.5 * q, q)); }\n",
+                                 "#version 150\n"
+                                 "uniform sampler2D tex;\n"
+                                 "out vec4 col;\n"
+                                 "void main() { col = texture(tex, vec2(gl_FragCoord.x / 64.0 * 1.4 - 0.2, gl_FragCoord.y / 64.0 * 1.4 - 0.2)); }\n" };
+    static const GLenum wraps[3] = { GL_CLAMP_TO_EDGE, 0x812D, GL_REPEAT };
+    uint8_t ramp[4 * 4 * 4];
+    for (int i = 0; i < 16; i++) {
+        uint8_t v = (uint8_t)(i * 17);
+        ramp[4 * i] = ramp[4 * i + 1] = ramp[4 * i + 2] = v, ramp[4 * i + 3] = 255;
+    }
+    GLuint t;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 4, 4, 0, GL_RGBA, GL_UNSIGNED_BYTE, ramp);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    for (int f = 0; f < 3; f++) {
+        GLuint p = fs_program(fs[f]);
+        CHECK(p != 0, "bilinear program %d links", f);
+        if (!p) continue;
+        for (int w = 0; w < 3; w++)
+            for (int m = 0; m < 2; m++) {
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, m ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, (GLint)wraps[w]);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, (GLint)wraps[w]);
+                glUseProgram_(p);
+                full_quad();
+                glUseProgram_(0);
+                static uint32_t img[64 * 64];
+                glReadPixels(0, 0, 64, 64, GL_RGBA, GL_UNSIGNED_BYTE, img);
+                int bad = 0, bx = 0, by = 0;
+                for (int i = 0; i < 64 * 64; i++) {
+                    int r = (int)(img[i] & 255), g = (int)((img[i] >> 8) & 255), b = (int)((img[i] >> 16) & 255);
+                    if (abs(r - g) > 1 || abs(b - g) > 1) {
+                        if (!bad) bx = i % 64, by = i / 64;
+                        bad++;
+                    }
+                }
+                CHECK(bad == 0, "bilinear gray stays gray (shader %d, wrap %04x, %s): %d pixels off, first %d,%d = %08x", f, wraps[w],
+                      m ? "trilinear" : "linear", bad, bx, by, img[by * 64 + bx]);
+            }
+    }
+    glDeleteTextures(1, &t);
 }
 
 static LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp) { return DefWindowProcA(w, m, wp, lp); }
@@ -1068,6 +1136,7 @@ int main(void)
     test_map_alignment();
     test_bfg_interaction();
     test_border_and_formats();
+    test_bilinear_gray();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);

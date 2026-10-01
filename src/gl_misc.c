@@ -731,8 +731,9 @@ int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
     case GL_UNPACK_SKIP_PIXELS: v[0] = c->unpack_skip_pixels; return 1;
     case GL_UNPACK_IMAGE_HEIGHT: case GL_UNPACK_SKIP_IMAGES:
     case GL_PACK_ROW_LENGTH: case GL_PACK_SKIP_ROWS: case GL_PACK_SKIP_PIXELS: case GL_PACK_IMAGE_HEIGHT:
-    case GL_PACK_SKIP_IMAGES: case GL_UNPACK_SWAP_BYTES: case GL_UNPACK_LSB_FIRST: case GL_PACK_SWAP_BYTES:
-    case GL_PACK_LSB_FIRST:
+    case GL_UNPACK_SWAP_BYTES: v[0] = c->unpack_swap; return 1;
+    case GL_PACK_SWAP_BYTES: v[0] = c->pack_swap; return 1;
+    case GL_PACK_SKIP_IMAGES: case GL_UNPACK_LSB_FIRST: case GL_PACK_LSB_FIRST:
         v[0] = 0;
         return 1;
     case GL_COPY_READ_BUFFER_BINDING: v[0] = c->copy_read; return 1;

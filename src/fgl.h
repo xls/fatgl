@@ -363,6 +363,7 @@ typedef struct fgl_ctx {
     float    alpha_ref;
     float    poly_factor, poly_units;
     int      unpack_align, unpack_row, pack_align, unpack_skip_rows, unpack_skip_pixels;
+    int      unpack_swap, pack_swap; /* GL_UNPACK_SWAP_BYTES / GL_PACK_SWAP_BYTES */
 
     /* matrices */
     GLenum  matrix_mode;
@@ -524,6 +525,8 @@ void         fgl_arb_free(fgl_ctx* c);
 fgl_program* fgl_active_program(fgl_ctx* c);
 /* gl_pixels.c: client pixel data <-> straight RGBA8, compressed textures, pixel buffers */
 int         fgl_pixel_bytes(GLenum fmt, GLenum type); /* 0: unsupported */
+int         fgl_swap_unit(GLenum type);                /* bytes GL_*_SWAP_BYTES reverses (1: nothing) */
+void        fgl_swap_bytes(uint8_t* p, size_t n, int unit);
 void        fgl_pixels_to_rgba8(GLenum fmt, GLenum type, const uint8_t* src, int n, uint8_t* rgba);
 int         fgl_rgba8_to_pixels(GLenum fmt, GLenum type, const uint8_t* rgba, int n, uint8_t* dst);
 int         fgl_compressed_block_bytes(GLenum ifmt);

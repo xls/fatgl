@@ -235,14 +235,22 @@ static void fgl_upload(fgl_ctx* c, fm_surface* s, int x0, int y0, int w, int h, 
     size_t stride = (size_t)rowpx * (size_t)bpp;
     stride        = (stride + (size_t)c->unpack_align - 1) / (size_t)c->unpack_align * (size_t)c->unpack_align;
     const uint8_t* base = (const uint8_t*)pixels + (size_t)c->unpack_skip_rows * stride + (size_t)c->unpack_skip_pixels * (size_t)bpp;
+    int            swap = c->unpack_swap ? fgl_swap_unit(type) : 1;
     for (int z = 0; z < d; z++)
         for (int y = 0; y < h; y++) {
             uint32_t*      o   = fm_surface_row32(s, y0 + z * ystep + y) + x0;
             const uint8_t* row = base + ((size_t)z * (size_t)h + (size_t)y) * stride;
             uint8_t        tmp[4 * 256];
             for (int x = 0; x < w; x += 256) {
-                int n = w - x < 256 ? w - x : 256;
-                fgl_pixels_to_rgba8(fmt, type, row + (size_t)x * (size_t)bpp, n, tmp);
+                int            n   = w - x < 256 ? w - x : 256;
+                const uint8_t* src = row + (size_t)x * (size_t)bpp;
+                uint8_t        sw[256 * 16];
+                if (swap > 1 && (size_t)n * (size_t)bpp <= sizeof(sw)) { /* GL_UNPACK_SWAP_BYTES */
+                    memcpy(sw, src, (size_t)n * (size_t)bpp);
+                    fgl_swap_bytes(sw, (size_t)n * (size_t)bpp, swap);
+                    src = sw;
+                }
+                fgl_pixels_to_rgba8(fmt, type, src, n, tmp);
                 for (int i = 0; i < n; i++) o[x + i] = fgl_base_pixel(bf, tmp + 4 * i);
             }
         }
