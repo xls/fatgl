@@ -427,7 +427,10 @@ void APIENTRY glCopyTexImage2D(GLenum target, GLint level, GLenum ifmt, GLint x,
 void APIENTRY glTexEnvi(GLenum target, GLenum p, GLint v)
 {
     FGL_CTX_OR_RETURN(c);
-    if (target == GL_TEXTURE_ENV && p == GL_TEXTURE_ENV_MODE) c->tex_env = (GLenum)v;
+    if (target == GL_TEXTURE_ENV && p == GL_TEXTURE_ENV_MODE) {
+        c->tex_envs[c->active_unit] = (GLenum)v;
+        if (c->active_unit == 0) c->tex_env = (GLenum)v;
+    }
 }
 void APIENTRY glTexEnvf(GLenum target, GLenum p, GLfloat v) { glTexEnvi(target, p, (GLint)v); }
 void APIENTRY glTexEnvfv(GLenum target, GLenum p, const GLfloat* v) { glTexEnvi(target, p, (GLint)v[0]); }

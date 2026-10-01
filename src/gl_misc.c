@@ -568,6 +568,36 @@ void APIENTRY glClearBufferfi(GLenum buffer, GLint draw, GLfloat depth, GLint st
     fgl_clear_with(c, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, NULL, depth, stencil);
 }
 
+/* ---- fog (fixed function) ---- */
+static void fgl_fog(GLenum p, const float* v)
+{
+    FGL_CTX_OR_RETURN(c);
+    switch (p) {
+    case GL_FOG_MODE: c->fog_mode = (GLenum)v[0]; break;
+    case GL_FOG_DENSITY: c->fog_density = v[0]; break;
+    case GL_FOG_START: c->fog_start = v[0]; break;
+    case GL_FOG_END: c->fog_end = v[0]; break;
+    case GL_FOG_COLOR: memcpy(c->fog_color, v, 16); break;
+    case GL_FOG_INDEX: case GL_FOG_COORD_SRC: break; /* depth based fog only */
+    default: fgl_error(GL_INVALID_ENUM); break;
+    }
+}
+void APIENTRY glFogf(GLenum p, GLfloat v)
+{
+    float f[4] = { v, 0, 0, 0 }; /* GL_FOG_COLOR needs the vector form */
+    if (p == GL_FOG_COLOR) fgl_error(GL_INVALID_ENUM);
+    else fgl_fog(p, f);
+}
+void APIENTRY glFogi(GLenum p, GLint v) { glFogf(p, (float)v); }
+void APIENTRY glFogfv(GLenum p, const GLfloat* v) { fgl_fog(p, v); }
+void APIENTRY glFogiv(GLenum p, const GLint* v)
+{
+    float f[4] = { (float)v[0], 0, 0, 0 };
+    if (p == GL_FOG_COLOR)
+        for (int k = 0; k < 4; k++) f[k] = (float)v[k] / 2147483647.0f;
+    fgl_fog(p, f);
+}
+
 /* ---- glGet values kept here ---- */
 int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
 {
@@ -587,6 +617,14 @@ int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
     case GL_STENCIL_BACK_PASS_DEPTH_FAIL: v[0] = c->stencil[1].dpfail; return 1;
     case GL_STENCIL_BACK_PASS_DEPTH_PASS: v[0] = c->stencil[1].dppass; return 1;
     case GL_STENCIL_CLEAR_VALUE: v[0] = c->clear_stencil; return 1;
+    case GL_FOG_MODE: v[0] = c->fog_mode; return 1;
+    case GL_FOG_DENSITY: v[0] = c->fog_density; return 1;
+    case GL_FOG_START: v[0] = c->fog_start; return 1;
+    case GL_FOG_END: v[0] = c->fog_end; return 1;
+    case GL_FOG_COLOR: for (int i = 0; i < 4; i++) v[i] = c->fog_color[i]; return 4;
+    case GL_MAX_TEXTURE_UNITS: v[0] = 2; return 1; /* fixed function texture stages */
+    case GL_CLIENT_ACTIVE_TEXTURE: v[0] = GL_TEXTURE0 + c->client_unit; return 1;
+    case GL_TEXTURE_ENV_MODE: v[0] = c->tex_envs[c->active_unit]; return 1;
     case GL_POINT_SIZE: v[0] = c->point_size; return 1;
     case GL_LINE_WIDTH: v[0] = c->line_width; return 1;
     case GL_POINT_SIZE_RANGE: case GL_ALIASED_LINE_WIDTH_RANGE: case GL_SMOOTH_LINE_WIDTH_RANGE: v[0] = 1, v[1] = 64; return 2;

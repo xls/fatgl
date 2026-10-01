@@ -33,6 +33,17 @@
 #define GL_SHADE_MODEL            0x0B54
 #define GL_COLOR_MATERIAL         0x0B57
 #define GL_FOG                    0x0B60
+#define GL_FOG_INDEX              0x0B61
+#define GL_FOG_DENSITY            0x0B62
+#define GL_FOG_START              0x0B63
+#define GL_FOG_END                0x0B64
+#define GL_FOG_MODE               0x0B65
+#define GL_FOG_COLOR              0x0B66
+#define GL_EXP                    0x0800
+#define GL_EXP2                   0x0801
+#define GL_FOG_COORD_SRC          0x8450
+#define GL_CLIENT_ACTIVE_TEXTURE  0x84E1
+#define GL_MAX_TEXTURE_UNITS      0x84E2
 #define GL_MATRIX_MODE            0x0BA0
 #define GL_NORMALIZE              0x0BA1
 #define GL_MODELVIEW_MATRIX       0x0BA6
@@ -97,11 +108,11 @@ enum {
     FGL_E_DEPTH = 1u << 0, FGL_E_CULL = 1u << 1, FGL_E_LIGHTING = 1u << 2, FGL_E_TEX2D = 1u << 3, FGL_E_BLEND = 1u << 4,
     FGL_E_ALPHA = 1u << 5, FGL_E_COLMAT = 1u << 6, FGL_E_NORMALIZE = 1u << 7, FGL_E_SCISSOR = 1u << 8,
     FGL_E_STENCIL = 1u << 9, FGL_E_POFFSET = 1u << 10, FGL_E_RESTART = 1u << 11,
-    FGL_E_PSIZE = 1u << 12
+    FGL_E_PSIZE = 1u << 12, FGL_E_FOG = 1u << 13
 };
 
 typedef struct fgl_vtx { /* an immediate mode vertex: object position, current attributes */
-    float pos[4], nrm[3], tex[2], col[4];
+    float pos[4], nrm[3], tex[2], col[4], tex1[2]; /* tex1: texture unit 1 (multitexture) */
 } fgl_vtx;
 
 typedef struct fgl_tex {
@@ -324,7 +335,13 @@ typedef struct fgl_ctx {
     /* textures */
     fgl_tex* tex;
     int      ntex;
-    GLenum   tex_env;
+    GLenum   tex_env;           /* unit 0 (= tex_envs[0]) */
+    GLenum   tex_envs[FGL_UNITS]; /* glTexEnv GL_TEXTURE_ENV_MODE per texture unit */
+    unsigned tex2d_units;       /* glEnable(GL_TEXTURE_2D) per texture unit */
+    int      client_unit;       /* glClientActiveTexture */
+    float    cur_tex1[4];       /* glMultiTexCoord of unit 1 */
+    GLenum   fog_mode;
+    float    fog_density, fog_start, fog_end, fog_color[4];
 
     /* display lists */
     fgl_list* lists;
@@ -381,7 +398,7 @@ typedef struct fgl_ctx {
     float  attr_value[FGL_ATTRIBS][4]; /* generic attribute values (glVertexAttrib*) */
 
     /* client vertex arrays: vertex, normal, color, texcoord */
-    fgl_clarray va[4];
+    fgl_clarray va[5]; /* [4]: texture coordinates of unit 1 */
 #define FGL_BOUND_TEX(c) ((c)->unit_tex[(c)->active_unit])
 } fgl_ctx;
 

@@ -30,6 +30,9 @@ void fgl_ctx_init(fgl_ctx* c)
     c->clear_depth  = 1.0f;
     c->unpack_align = c->pack_align = 4;
     c->tex_env      = GL_MODULATE;
+    for (int u = 0; u < FGL_UNITS; u++) c->tex_envs[u] = GL_MODULATE;
+    c->cur_tex1[3]  = 1;
+    c->fog_mode = GL_EXP, c->fog_density = 1, c->fog_start = 0, c->fog_end = 1;
     c->matrix_mode  = GL_MODELVIEW;
     for (int i = 0; i < 4; i++) c->color_mask[i] = GL_TRUE;
     for (int m = 0; m < 3; m++) memcpy(&c->mstack[m][0], g_ident, sizeof(g_ident));
@@ -123,6 +126,7 @@ static unsigned fgl_cap_bit(GLenum cap)
     case GL_CULL_FACE: return FGL_E_CULL;
     case GL_LIGHTING: return FGL_E_LIGHTING;
     case GL_TEXTURE_2D: return FGL_E_TEX2D;
+    case GL_FOG: return FGL_E_FOG;
     case GL_BLEND: return FGL_E_BLEND;
     case GL_ALPHA_TEST: return FGL_E_ALPHA;
     case GL_COLOR_MATERIAL: return FGL_E_COLMAT;
@@ -145,8 +149,13 @@ static void fgl_set_cap(GLenum cap, int on)
         c->light_on = on ? c->light_on | b : c->light_on & ~b;
         return;
     }
+    if (cap == GL_TEXTURE_2D) { /* per texture unit (unit 0 also in enables) */
+        unsigned u = 1u << c->active_unit;
+        c->tex2d_units = on ? c->tex2d_units | u : c->tex2d_units & ~u;
+        if (c->active_unit != 0) return;
+    }
     unsigned b = fgl_cap_bit(cap);
-    if (!b) { /* dithering, fog, smoothing, ...: accepted, not implemented */
+    if (!b) { /* dithering, smoothing, ...: accepted, not implemented */
         if (cap == GL_DITHER || cap == GL_LINE_SMOOTH || cap == GL_POLYGON_SMOOTH || cap == GL_MULTISAMPLE) return;
         return;
     }
@@ -161,6 +170,7 @@ GLboolean APIENTRY glIsEnabled(GLenum cap)
     fgl_ctx* c = fgl_cur();
     if (!c) return GL_FALSE;
     if (cap >= GL_LIGHT0 && cap < GL_LIGHT0 + FGL_LIGHTS) return (c->light_on >> (cap - GL_LIGHT0)) & 1 ? GL_TRUE : GL_FALSE;
+    if (cap == GL_TEXTURE_2D) return (c->tex2d_units >> c->active_unit) & 1 ? GL_TRUE : GL_FALSE;
     unsigned b = fgl_cap_bit(cap);
     return (c->enables & b) ? GL_TRUE : GL_FALSE;
 }
@@ -398,6 +408,8 @@ void fgl_sync(fgl_ctx* c)
 /* ---- queries ---- */
 static char g_renderer[96];
 
+static const char* fgl_ext_string(void);
+
 const GLubyte* APIENTRY glGetString(GLenum name)
 {
     fgl_ctx* c = fgl_cur();
@@ -414,19 +426,42 @@ const GLubyte* APIENTRY glGetString(GLenum name)
             fgl_error(GL_INVALID_ENUM); /* core profile: glGetStringi */
             return NULL;
         }
-        return (const GLubyte*)"GL_EXT_bgra GL_ARB_vertex_buffer_object GL_ARB_vertex_array_object GL_ARB_shader_objects "
-                               "GL_ARB_vertex_shader GL_ARB_fragment_shader GL_ARB_uniform_buffer_object "
-                               "GL_ARB_draw_instanced GL_ARB_instanced_arrays GL_ARB_draw_elements_base_vertex "
-                               "GL_ARB_map_buffer_range GL_ARB_copy_buffer GL_ARB_half_float_vertex";
+        return (const GLubyte*)fgl_ext_string();
     default: fgl_error(GL_INVALID_ENUM); return NULL;
     }
 }
 
-static const char* g_ext[] = { "GL_EXT_bgra", "GL_ARB_vertex_buffer_object", "GL_ARB_vertex_array_object",
-                               "GL_ARB_uniform_buffer_object", "GL_ARB_draw_instanced", "GL_ARB_instanced_arrays",
-                               "GL_ARB_draw_elements_base_vertex", "GL_ARB_map_buffer_range", "GL_ARB_copy_buffer",
-                               "GL_ARB_half_float_vertex" };
+static const char* g_ext[] = {
+    /* GL 1.x era (older games look for these in GL_EXTENSIONS) */
+    "GL_ARB_multitexture", "GL_EXT_texture_env_add", "GL_ARB_texture_env_add", "GL_EXT_bgra", "GL_EXT_texture_edge_clamp",
+    "GL_SGIS_texture_edge_clamp", "GL_ARB_texture_compression", "GL_EXT_texture_compression_s3tc", "GL_EXT_packed_pixels",
+    "GL_EXT_blend_color", "GL_EXT_blend_minmax", "GL_EXT_blend_subtract", "GL_EXT_blend_func_separate", "GL_EXT_stencil_wrap",
+    "GL_ARB_texture_non_power_of_two", "GL_ARB_depth_texture", "GL_ARB_point_sprite", "GL_ARB_vertex_buffer_object",
+    "GL_ARB_pixel_buffer_object", "GL_ARB_occlusion_query", "GL_ARB_occlusion_query2", "GL_ARB_shader_objects",
+    "GL_ARB_vertex_shader", "GL_ARB_fragment_shader", "GL_ARB_shading_language_100", "GL_EXT_framebuffer_object",
+    "GL_EXT_framebuffer_blit", "GL_EXT_packed_depth_stencil",
+    /* GL 3.x */
+    "GL_ARB_framebuffer_object", "GL_ARB_vertex_array_object", "GL_ARB_uniform_buffer_object", "GL_ARB_draw_instanced",
+    "GL_ARB_instanced_arrays", "GL_ARB_draw_elements_base_vertex", "GL_ARB_map_buffer_range", "GL_ARB_copy_buffer",
+    "GL_ARB_half_float_vertex", "GL_ARB_half_float_pixel", "GL_ARB_texture_compression_rgtc", "GL_ARB_sync", "GL_ARB_timer_query",
+    "GL_ARB_sampler_objects", "GL_ARB_vertex_type_2_10_10_10_rev", "GL_ARB_explicit_attrib_location" };
 #define FGL_NEXT ((int)(sizeof(g_ext) / sizeof(g_ext[0])))
+
+/* the GL_EXTENSIONS string (compatibility contexts), built once */
+static const char* fgl_ext_string(void)
+{
+    static char buf[2048];
+    if (!buf[0]) {
+        size_t n = 0;
+        for (int i = 0; i < FGL_NEXT; i++) {
+            size_t l = strlen(g_ext[i]);
+            if (n + l + 2 >= sizeof(buf)) break;
+            memcpy(buf + n, g_ext[i], l), n += l, buf[n++] = ' ';
+        }
+        if (n) buf[n - 1] = 0;
+    }
+    return buf;
+}
 
 const GLubyte* APIENTRY glGetStringi(GLenum name, GLuint i)
 {

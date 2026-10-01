@@ -56,6 +56,8 @@ GLFN(void, glLinkProgram, (GLuint))
 GLFN(void, glGetProgramiv, (GLuint, GLenum, GLint*))
 GLFN(void, glGetProgramInfoLog, (GLuint, GLsizei, GLsizei*, GLchar*))
 GLFN(void, glUseProgram, (GLuint))
+GLFN(void, glActiveTextureARB, (GLenum))
+GLFN(void, glMultiTexCoord2fARB, (GLenum, GLfloat, GLfloat))
 #define LOAD(name) name##_ = (PFN_##name)(void*)wglGetProcAddress(#name)
 
 static uint32_t px(int x, int y) /* RGBA bytes of the framebuffer as 0xAABBGGRR */
@@ -207,6 +209,56 @@ static GLuint compile(GLenum type, const char* src)
     return s;
 }
 
+/* GL 1.3 multitexture the GoldSrc / Quake way: base texture * lightmap, fog */
+static void test_multitexture(void)
+{
+    ortho();
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    GLuint   t[2];
+    uint32_t base = 0xFFFFFFFFu, lm[2] = { 0xFF808080u, 0xFF0000FFu }; /* RGBA bytes: white; gray, red */
+    glGenTextures(2, t);
+    glActiveTextureARB_(0x84C0); /* GL_TEXTURE0 */
+    glBindTexture(GL_TEXTURE_2D, t[0]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &base);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glEnable(GL_TEXTURE_2D);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+    glActiveTextureARB_(0x84C1); /* GL_TEXTURE1: the lightmap */
+    glBindTexture(GL_TEXTURE_2D, t[1]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, lm);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glEnable(GL_TEXTURE_2D);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glBegin(GL_QUADS);
+    glMultiTexCoord2fARB_(0x84C0, 0.5f, 0.5f), glMultiTexCoord2fARB_(0x84C1, 0, 0.5f), glVertex2f(0, 0);
+    glMultiTexCoord2fARB_(0x84C0, 0.5f, 0.5f), glMultiTexCoord2fARB_(0x84C1, 1, 0.5f), glVertex2f(64, 0);
+    glMultiTexCoord2fARB_(0x84C0, 0.5f, 0.5f), glMultiTexCoord2fARB_(0x84C1, 1, 0.5f), glVertex2f(64, 64);
+    glMultiTexCoord2fARB_(0x84C0, 0.5f, 0.5f), glMultiTexCoord2fARB_(0x84C1, 0, 0.5f), glVertex2f(0, 64);
+    glEnd();
+    CHECK(px(10, 30) == 0xFF808080u && px(50, 30) == 0xFF0000FFu, "texture * lightmap (%08x %08x)", px(10, 30), px(50, 30));
+    /* fog on the same quad: linear, half way (ortho: eye distance 1) */
+    GLfloat fc[4] = { 0, 0, 1, 1 };
+    glEnable(GL_FOG);
+    glFogi(GL_FOG_MODE, GL_LINEAR);
+    glFogf(GL_FOG_START, 0);
+    glFogf(GL_FOG_END, 2);
+    glFogfv(GL_FOG_COLOR, fc);
+    glBegin(GL_QUADS);
+    glMultiTexCoord2fARB_(0x84C0, 0.5f, 0.5f), glMultiTexCoord2fARB_(0x84C1, 0.75f, 0.5f), glVertex2f(0, 0); /* the red texel */
+    glVertex2f(64, 0), glVertex2f(64, 64), glVertex2f(0, 64);
+    glEnd();
+    glDisable(GL_FOG);
+    CHECK(close_to(px(10, 30), 0xFF800080u, 2), "linear fog (%08x)", px(10, 30));
+    glDisable(GL_TEXTURE_2D);
+    glActiveTextureARB_(0x84C0);
+    glDisable(GL_TEXTURE_2D);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glDeleteTextures(2, t);
+}
+
 static void test_legacy_glsl(void)
 {
     /* GLSL 1.10 with the fixed function state */
@@ -262,9 +314,13 @@ int main(void)
     LOAD(glCompressedTexImage2D), LOAD(glGenQueries), LOAD(glBeginQuery), LOAD(glEndQuery), LOAD(glGetQueryObjectuiv);
     LOAD(glCreateShader), LOAD(glShaderSource), LOAD(glCompileShader), LOAD(glGetShaderiv), LOAD(glGetShaderInfoLog);
     LOAD(glCreateProgram), LOAD(glAttachShader), LOAD(glLinkProgram), LOAD(glGetProgramiv), LOAD(glGetProgramInfoLog);
-    LOAD(glUseProgram);
+    LOAD(glUseProgram), LOAD(glActiveTextureARB), LOAD(glMultiTexCoord2fARB);
+    const char* ext = (const char*)glGetString(GL_EXTENSIONS);
+    CHECK(ext && strstr(ext, "GL_ARB_multitexture") && strstr(ext, "GL_EXT_texture_compression_s3tc"), "GL_EXTENSIONS");
+    CHECK(glActiveTextureARB_ && glMultiTexCoord2fARB_, "ARB multitexture entry points");
     test_pixels();
     test_raster_state();
+    test_multitexture();
     test_legacy_glsl();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);

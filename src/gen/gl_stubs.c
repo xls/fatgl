@@ -375,34 +375,6 @@ void APIENTRY glFeedbackBuffer(GLsizei size, GLenum type, GLfloat *buffer)
     fgl_unimplemented("glFeedbackBuffer");
 }
 
-void APIENTRY glFogf(GLenum pname, GLfloat param)
-{
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glFogf");
-}
-
-void APIENTRY glFogfv(GLenum pname, const GLfloat *params)
-{
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glFogfv");
-}
-
-void APIENTRY glFogi(GLenum pname, GLint param)
-{
-    (void)pname;
-    (void)param;
-    fgl_unimplemented("glFogi");
-}
-
-void APIENTRY glFogiv(GLenum pname, const GLint *params)
-{
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glFogiv");
-}
-
 void APIENTRY glGetClipPlane(GLenum plane, GLdouble *equation)
 {
     (void)plane;
@@ -1765,5 +1737,508 @@ GLint APIENTRY glGetFragDataIndex(GLuint program, const GLchar *name)
     (void)name;
     fgl_unimplemented("glGetFragDataIndex");
     return (GLint)0;
+}
+
+void APIENTRY glLoadTransposeMatrixf(const GLfloat *m)
+{
+    (void)m;
+    fgl_unimplemented("glLoadTransposeMatrixf");
+}
+
+void APIENTRY glLoadTransposeMatrixd(const GLdouble *m)
+{
+    (void)m;
+    fgl_unimplemented("glLoadTransposeMatrixd");
+}
+
+void APIENTRY glMultTransposeMatrixf(const GLfloat *m)
+{
+    (void)m;
+    fgl_unimplemented("glMultTransposeMatrixf");
+}
+
+void APIENTRY glMultTransposeMatrixd(const GLdouble *m)
+{
+    (void)m;
+    fgl_unimplemented("glMultTransposeMatrixd");
+}
+
+void APIENTRY glFogCoordf(GLfloat coord)
+{
+    (void)coord;
+    fgl_unimplemented("glFogCoordf");
+}
+
+void APIENTRY glFogCoordfv(const GLfloat *coord)
+{
+    (void)coord;
+    fgl_unimplemented("glFogCoordfv");
+}
+
+void APIENTRY glFogCoordd(GLdouble coord)
+{
+    (void)coord;
+    fgl_unimplemented("glFogCoordd");
+}
+
+void APIENTRY glFogCoorddv(const GLdouble *coord)
+{
+    (void)coord;
+    fgl_unimplemented("glFogCoorddv");
+}
+
+void APIENTRY glFogCoordPointer(GLenum type, GLsizei stride, const void *pointer)
+{
+    (void)type;
+    (void)stride;
+    (void)pointer;
+    fgl_unimplemented("glFogCoordPointer");
+}
+
+void APIENTRY glSecondaryColor3b(GLbyte red, GLbyte green, GLbyte blue)
+{
+    (void)red;
+    (void)green;
+    (void)blue;
+    fgl_unimplemented("glSecondaryColor3b");
+}
+
+void APIENTRY glSecondaryColor3bv(const GLbyte *v)
+{
+    (void)v;
+    fgl_unimplemented("glSecondaryColor3bv");
+}
+
+void APIENTRY glSecondaryColor3d(GLdouble red, GLdouble green, GLdouble blue)
+{
+    (void)red;
+    (void)green;
+    (void)blue;
+    fgl_unimplemented("glSecondaryColor3d");
+}
+
+void APIENTRY glSecondaryColor3dv(const GLdouble *v)
+{
+    (void)v;
+    fgl_unimplemented("glSecondaryColor3dv");
+}
+
+void APIENTRY glSecondaryColor3f(GLfloat red, GLfloat green, GLfloat blue)
+{
+    (void)red;
+    (void)green;
+    (void)blue;
+    fgl_unimplemented("glSecondaryColor3f");
+}
+
+void APIENTRY glSecondaryColor3fv(const GLfloat *v)
+{
+    (void)v;
+    fgl_unimplemented("glSecondaryColor3fv");
+}
+
+void APIENTRY glSecondaryColor3i(GLint red, GLint green, GLint blue)
+{
+    (void)red;
+    (void)green;
+    (void)blue;
+    fgl_unimplemented("glSecondaryColor3i");
+}
+
+void APIENTRY glSecondaryColor3iv(const GLint *v)
+{
+    (void)v;
+    fgl_unimplemented("glSecondaryColor3iv");
+}
+
+void APIENTRY glSecondaryColor3s(GLshort red, GLshort green, GLshort blue)
+{
+    (void)red;
+    (void)green;
+    (void)blue;
+    fgl_unimplemented("glSecondaryColor3s");
+}
+
+void APIENTRY glSecondaryColor3sv(const GLshort *v)
+{
+    (void)v;
+    fgl_unimplemented("glSecondaryColor3sv");
+}
+
+void APIENTRY glSecondaryColor3ub(GLubyte red, GLubyte green, GLubyte blue)
+{
+    (void)red;
+    (void)green;
+    (void)blue;
+    fgl_unimplemented("glSecondaryColor3ub");
+}
+
+void APIENTRY glSecondaryColor3ubv(const GLubyte *v)
+{
+    (void)v;
+    fgl_unimplemented("glSecondaryColor3ubv");
+}
+
+void APIENTRY glSecondaryColor3ui(GLuint red, GLuint green, GLuint blue)
+{
+    (void)red;
+    (void)green;
+    (void)blue;
+    fgl_unimplemented("glSecondaryColor3ui");
+}
+
+void APIENTRY glSecondaryColor3uiv(const GLuint *v)
+{
+    (void)v;
+    fgl_unimplemented("glSecondaryColor3uiv");
+}
+
+void APIENTRY glSecondaryColor3us(GLushort red, GLushort green, GLushort blue)
+{
+    (void)red;
+    (void)green;
+    (void)blue;
+    fgl_unimplemented("glSecondaryColor3us");
+}
+
+void APIENTRY glSecondaryColor3usv(const GLushort *v)
+{
+    (void)v;
+    fgl_unimplemented("glSecondaryColor3usv");
+}
+
+void APIENTRY glSecondaryColorPointer(GLint size, GLenum type, GLsizei stride, const void *pointer)
+{
+    (void)size;
+    (void)type;
+    (void)stride;
+    (void)pointer;
+    fgl_unimplemented("glSecondaryColorPointer");
+}
+
+void APIENTRY glWindowPos2d(GLdouble x, GLdouble y)
+{
+    (void)x;
+    (void)y;
+    fgl_unimplemented("glWindowPos2d");
+}
+
+void APIENTRY glWindowPos2dv(const GLdouble *v)
+{
+    (void)v;
+    fgl_unimplemented("glWindowPos2dv");
+}
+
+void APIENTRY glWindowPos2f(GLfloat x, GLfloat y)
+{
+    (void)x;
+    (void)y;
+    fgl_unimplemented("glWindowPos2f");
+}
+
+void APIENTRY glWindowPos2fv(const GLfloat *v)
+{
+    (void)v;
+    fgl_unimplemented("glWindowPos2fv");
+}
+
+void APIENTRY glWindowPos2i(GLint x, GLint y)
+{
+    (void)x;
+    (void)y;
+    fgl_unimplemented("glWindowPos2i");
+}
+
+void APIENTRY glWindowPos2iv(const GLint *v)
+{
+    (void)v;
+    fgl_unimplemented("glWindowPos2iv");
+}
+
+void APIENTRY glWindowPos2s(GLshort x, GLshort y)
+{
+    (void)x;
+    (void)y;
+    fgl_unimplemented("glWindowPos2s");
+}
+
+void APIENTRY glWindowPos2sv(const GLshort *v)
+{
+    (void)v;
+    fgl_unimplemented("glWindowPos2sv");
+}
+
+void APIENTRY glWindowPos3d(GLdouble x, GLdouble y, GLdouble z)
+{
+    (void)x;
+    (void)y;
+    (void)z;
+    fgl_unimplemented("glWindowPos3d");
+}
+
+void APIENTRY glWindowPos3dv(const GLdouble *v)
+{
+    (void)v;
+    fgl_unimplemented("glWindowPos3dv");
+}
+
+void APIENTRY glWindowPos3f(GLfloat x, GLfloat y, GLfloat z)
+{
+    (void)x;
+    (void)y;
+    (void)z;
+    fgl_unimplemented("glWindowPos3f");
+}
+
+void APIENTRY glWindowPos3fv(const GLfloat *v)
+{
+    (void)v;
+    fgl_unimplemented("glWindowPos3fv");
+}
+
+void APIENTRY glWindowPos3i(GLint x, GLint y, GLint z)
+{
+    (void)x;
+    (void)y;
+    (void)z;
+    fgl_unimplemented("glWindowPos3i");
+}
+
+void APIENTRY glWindowPos3iv(const GLint *v)
+{
+    (void)v;
+    fgl_unimplemented("glWindowPos3iv");
+}
+
+void APIENTRY glWindowPos3s(GLshort x, GLshort y, GLshort z)
+{
+    (void)x;
+    (void)y;
+    (void)z;
+    fgl_unimplemented("glWindowPos3s");
+}
+
+void APIENTRY glWindowPos3sv(const GLshort *v)
+{
+    (void)v;
+    fgl_unimplemented("glWindowPos3sv");
+}
+
+void APIENTRY glVertexP2ui(GLenum type, GLuint value)
+{
+    (void)type;
+    (void)value;
+    fgl_unimplemented("glVertexP2ui");
+}
+
+void APIENTRY glVertexP2uiv(GLenum type, const GLuint *value)
+{
+    (void)type;
+    (void)value;
+    fgl_unimplemented("glVertexP2uiv");
+}
+
+void APIENTRY glVertexP3ui(GLenum type, GLuint value)
+{
+    (void)type;
+    (void)value;
+    fgl_unimplemented("glVertexP3ui");
+}
+
+void APIENTRY glVertexP3uiv(GLenum type, const GLuint *value)
+{
+    (void)type;
+    (void)value;
+    fgl_unimplemented("glVertexP3uiv");
+}
+
+void APIENTRY glVertexP4ui(GLenum type, GLuint value)
+{
+    (void)type;
+    (void)value;
+    fgl_unimplemented("glVertexP4ui");
+}
+
+void APIENTRY glVertexP4uiv(GLenum type, const GLuint *value)
+{
+    (void)type;
+    (void)value;
+    fgl_unimplemented("glVertexP4uiv");
+}
+
+void APIENTRY glTexCoordP1ui(GLenum type, GLuint coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glTexCoordP1ui");
+}
+
+void APIENTRY glTexCoordP1uiv(GLenum type, const GLuint *coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glTexCoordP1uiv");
+}
+
+void APIENTRY glTexCoordP2ui(GLenum type, GLuint coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glTexCoordP2ui");
+}
+
+void APIENTRY glTexCoordP2uiv(GLenum type, const GLuint *coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glTexCoordP2uiv");
+}
+
+void APIENTRY glTexCoordP3ui(GLenum type, GLuint coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glTexCoordP3ui");
+}
+
+void APIENTRY glTexCoordP3uiv(GLenum type, const GLuint *coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glTexCoordP3uiv");
+}
+
+void APIENTRY glTexCoordP4ui(GLenum type, GLuint coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glTexCoordP4ui");
+}
+
+void APIENTRY glTexCoordP4uiv(GLenum type, const GLuint *coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glTexCoordP4uiv");
+}
+
+void APIENTRY glMultiTexCoordP1ui(GLenum texture, GLenum type, GLuint coords)
+{
+    (void)texture;
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glMultiTexCoordP1ui");
+}
+
+void APIENTRY glMultiTexCoordP1uiv(GLenum texture, GLenum type, const GLuint *coords)
+{
+    (void)texture;
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glMultiTexCoordP1uiv");
+}
+
+void APIENTRY glMultiTexCoordP2ui(GLenum texture, GLenum type, GLuint coords)
+{
+    (void)texture;
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glMultiTexCoordP2ui");
+}
+
+void APIENTRY glMultiTexCoordP2uiv(GLenum texture, GLenum type, const GLuint *coords)
+{
+    (void)texture;
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glMultiTexCoordP2uiv");
+}
+
+void APIENTRY glMultiTexCoordP3ui(GLenum texture, GLenum type, GLuint coords)
+{
+    (void)texture;
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glMultiTexCoordP3ui");
+}
+
+void APIENTRY glMultiTexCoordP3uiv(GLenum texture, GLenum type, const GLuint *coords)
+{
+    (void)texture;
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glMultiTexCoordP3uiv");
+}
+
+void APIENTRY glMultiTexCoordP4ui(GLenum texture, GLenum type, GLuint coords)
+{
+    (void)texture;
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glMultiTexCoordP4ui");
+}
+
+void APIENTRY glMultiTexCoordP4uiv(GLenum texture, GLenum type, const GLuint *coords)
+{
+    (void)texture;
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glMultiTexCoordP4uiv");
+}
+
+void APIENTRY glNormalP3ui(GLenum type, GLuint coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glNormalP3ui");
+}
+
+void APIENTRY glNormalP3uiv(GLenum type, const GLuint *coords)
+{
+    (void)type;
+    (void)coords;
+    fgl_unimplemented("glNormalP3uiv");
+}
+
+void APIENTRY glColorP3ui(GLenum type, GLuint color)
+{
+    (void)type;
+    (void)color;
+    fgl_unimplemented("glColorP3ui");
+}
+
+void APIENTRY glColorP3uiv(GLenum type, const GLuint *color)
+{
+    (void)type;
+    (void)color;
+    fgl_unimplemented("glColorP3uiv");
+}
+
+void APIENTRY glColorP4ui(GLenum type, GLuint color)
+{
+    (void)type;
+    (void)color;
+    fgl_unimplemented("glColorP4ui");
+}
+
+void APIENTRY glColorP4uiv(GLenum type, const GLuint *color)
+{
+    (void)type;
+    (void)color;
+    fgl_unimplemented("glColorP4uiv");
+}
+
+void APIENTRY glSecondaryColorP3ui(GLenum type, GLuint color)
+{
+    (void)type;
+    (void)color;
+    fgl_unimplemented("glSecondaryColorP3ui");
+}
+
+void APIENTRY glSecondaryColorP3uiv(GLenum type, const GLuint *color)
+{
+    (void)type;
+    (void)color;
+    fgl_unimplemented("glSecondaryColorP3uiv");
 }
 
