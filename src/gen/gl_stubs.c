@@ -234,29 +234,6 @@ void APIENTRY glCopyPixels(GLint x, GLint y, GLsizei width, GLsizei height, GLen
     fgl_unimplemented("glCopyPixels");
 }
 
-void APIENTRY glCopyTexImage1D(GLenum target, GLint level, GLenum internalFormat, GLint x, GLint y, GLsizei width, GLint border)
-{
-    (void)target;
-    (void)level;
-    (void)internalFormat;
-    (void)x;
-    (void)y;
-    (void)width;
-    (void)border;
-    fgl_unimplemented("glCopyTexImage1D");
-}
-
-void APIENTRY glCopyTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLint x, GLint y, GLsizei width)
-{
-    (void)target;
-    (void)level;
-    (void)xoffset;
-    (void)x;
-    (void)y;
-    (void)width;
-    fgl_unimplemented("glCopyTexSubImage1D");
-}
-
 void APIENTRY glDrawPixels(GLsizei width, GLsizei height, GLenum format, GLenum type, const void *pixels)
 {
     (void)width;
@@ -1097,195 +1074,6 @@ void APIENTRY glSelectBuffer(GLsizei size, GLuint *buffer)
     fgl_unimplemented("glSelectBuffer");
 }
 
-void APIENTRY glTexCoord1d(GLdouble s)
-{
-    (void)s;
-    fgl_unimplemented("glTexCoord1d");
-}
-
-void APIENTRY glTexCoord1dv(const GLdouble *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord1dv");
-}
-
-void APIENTRY glTexCoord1f(GLfloat s)
-{
-    (void)s;
-    fgl_unimplemented("glTexCoord1f");
-}
-
-void APIENTRY glTexCoord1fv(const GLfloat *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord1fv");
-}
-
-void APIENTRY glTexCoord1i(GLint s)
-{
-    (void)s;
-    fgl_unimplemented("glTexCoord1i");
-}
-
-void APIENTRY glTexCoord1iv(const GLint *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord1iv");
-}
-
-void APIENTRY glTexCoord1s(GLshort s)
-{
-    (void)s;
-    fgl_unimplemented("glTexCoord1s");
-}
-
-void APIENTRY glTexCoord1sv(const GLshort *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord1sv");
-}
-
-void APIENTRY glTexCoord2dv(const GLdouble *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord2dv");
-}
-
-void APIENTRY glTexCoord2iv(const GLint *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord2iv");
-}
-
-void APIENTRY glTexCoord2s(GLshort s, GLshort t)
-{
-    (void)s;
-    (void)t;
-    fgl_unimplemented("glTexCoord2s");
-}
-
-void APIENTRY glTexCoord2sv(const GLshort *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord2sv");
-}
-
-void APIENTRY glTexCoord3d(GLdouble s, GLdouble t, GLdouble r)
-{
-    (void)s;
-    (void)t;
-    (void)r;
-    fgl_unimplemented("glTexCoord3d");
-}
-
-void APIENTRY glTexCoord3dv(const GLdouble *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord3dv");
-}
-
-void APIENTRY glTexCoord3f(GLfloat s, GLfloat t, GLfloat r)
-{
-    (void)s;
-    (void)t;
-    (void)r;
-    fgl_unimplemented("glTexCoord3f");
-}
-
-void APIENTRY glTexCoord3fv(const GLfloat *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord3fv");
-}
-
-void APIENTRY glTexCoord3i(GLint s, GLint t, GLint r)
-{
-    (void)s;
-    (void)t;
-    (void)r;
-    fgl_unimplemented("glTexCoord3i");
-}
-
-void APIENTRY glTexCoord3iv(const GLint *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord3iv");
-}
-
-void APIENTRY glTexCoord3s(GLshort s, GLshort t, GLshort r)
-{
-    (void)s;
-    (void)t;
-    (void)r;
-    fgl_unimplemented("glTexCoord3s");
-}
-
-void APIENTRY glTexCoord3sv(const GLshort *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord3sv");
-}
-
-void APIENTRY glTexCoord4d(GLdouble s, GLdouble t, GLdouble r, GLdouble q)
-{
-    (void)s;
-    (void)t;
-    (void)r;
-    (void)q;
-    fgl_unimplemented("glTexCoord4d");
-}
-
-void APIENTRY glTexCoord4dv(const GLdouble *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord4dv");
-}
-
-void APIENTRY glTexCoord4f(GLfloat s, GLfloat t, GLfloat r, GLfloat q)
-{
-    (void)s;
-    (void)t;
-    (void)r;
-    (void)q;
-    fgl_unimplemented("glTexCoord4f");
-}
-
-void APIENTRY glTexCoord4fv(const GLfloat *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord4fv");
-}
-
-void APIENTRY glTexCoord4i(GLint s, GLint t, GLint r, GLint q)
-{
-    (void)s;
-    (void)t;
-    (void)r;
-    (void)q;
-    fgl_unimplemented("glTexCoord4i");
-}
-
-void APIENTRY glTexCoord4iv(const GLint *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord4iv");
-}
-
-void APIENTRY glTexCoord4s(GLshort s, GLshort t, GLshort r, GLshort q)
-{
-    (void)s;
-    (void)t;
-    (void)r;
-    (void)q;
-    fgl_unimplemented("glTexCoord4s");
-}
-
-void APIENTRY glTexCoord4sv(const GLshort *v)
-{
-    (void)v;
-    fgl_unimplemented("glTexCoord4sv");
-}
-
 void APIENTRY glTexGend(GLenum coord, GLenum pname, GLdouble param)
 {
     (void)coord;
@@ -1332,31 +1120,6 @@ void APIENTRY glTexGeniv(GLenum coord, GLenum pname, const GLint *params)
     (void)pname;
     (void)params;
     fgl_unimplemented("glTexGeniv");
-}
-
-void APIENTRY glTexImage1D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLint border, GLenum format, GLenum type, const void *pixels)
-{
-    (void)target;
-    (void)level;
-    (void)internalformat;
-    (void)width;
-    (void)border;
-    (void)format;
-    (void)type;
-    (void)pixels;
-    fgl_unimplemented("glTexImage1D");
-}
-
-void APIENTRY glTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLenum type, const void *pixels)
-{
-    (void)target;
-    (void)level;
-    (void)xoffset;
-    (void)width;
-    (void)format;
-    (void)type;
-    (void)pixels;
-    fgl_unimplemented("glTexSubImage1D");
 }
 
 void APIENTRY glVertex2dv(const GLdouble *v)
@@ -1449,65 +1212,6 @@ void APIENTRY glVertex4sv(const GLshort *v)
     fgl_unimplemented("glVertex4sv");
 }
 
-void APIENTRY glTexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels)
-{
-    (void)target;
-    (void)level;
-    (void)internalformat;
-    (void)width;
-    (void)height;
-    (void)depth;
-    (void)border;
-    (void)format;
-    (void)type;
-    (void)pixels;
-    fgl_unimplemented("glTexImage3D");
-}
-
-void APIENTRY glTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels)
-{
-    (void)target;
-    (void)level;
-    (void)xoffset;
-    (void)yoffset;
-    (void)zoffset;
-    (void)width;
-    (void)height;
-    (void)depth;
-    (void)format;
-    (void)type;
-    (void)pixels;
-    fgl_unimplemented("glTexSubImage3D");
-}
-
-void APIENTRY glCopyTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLint x, GLint y, GLsizei width, GLsizei height)
-{
-    (void)target;
-    (void)level;
-    (void)xoffset;
-    (void)yoffset;
-    (void)zoffset;
-    (void)x;
-    (void)y;
-    (void)width;
-    (void)height;
-    fgl_unimplemented("glCopyTexSubImage3D");
-}
-
-void APIENTRY glCompressedTexImage3D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLsizei imageSize, const void *data)
-{
-    (void)target;
-    (void)level;
-    (void)internalformat;
-    (void)width;
-    (void)height;
-    (void)depth;
-    (void)border;
-    (void)imageSize;
-    (void)data;
-    fgl_unimplemented("glCompressedTexImage3D");
-}
-
 void APIENTRY glCompressedTexImage1D(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLint border, GLsizei imageSize, const void *data)
 {
     (void)target;
@@ -1518,22 +1222,6 @@ void APIENTRY glCompressedTexImage1D(GLenum target, GLint level, GLenum internal
     (void)imageSize;
     (void)data;
     fgl_unimplemented("glCompressedTexImage1D");
-}
-
-void APIENTRY glCompressedTexSubImage3D(GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLsizei imageSize, const void *data)
-{
-    (void)target;
-    (void)level;
-    (void)xoffset;
-    (void)yoffset;
-    (void)zoffset;
-    (void)width;
-    (void)height;
-    (void)depth;
-    (void)format;
-    (void)imageSize;
-    (void)data;
-    fgl_unimplemented("glCompressedTexSubImage3D");
 }
 
 void APIENTRY glCompressedTexSubImage1D(GLenum target, GLint level, GLint xoffset, GLsizei width, GLenum format, GLsizei imageSize, const void *data)
@@ -1610,37 +1298,6 @@ void APIENTRY glGetUniformuiv(GLuint program, GLint location, GLuint *params)
     (void)location;
     (void)params;
     fgl_unimplemented("glGetUniformuiv");
-}
-
-void APIENTRY glFramebufferTexture1D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
-{
-    (void)target;
-    (void)attachment;
-    (void)textarget;
-    (void)texture;
-    (void)level;
-    fgl_unimplemented("glFramebufferTexture1D");
-}
-
-void APIENTRY glFramebufferTexture3D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLint zoffset)
-{
-    (void)target;
-    (void)attachment;
-    (void)textarget;
-    (void)texture;
-    (void)level;
-    (void)zoffset;
-    fgl_unimplemented("glFramebufferTexture3D");
-}
-
-void APIENTRY glFramebufferTextureLayer(GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer)
-{
-    (void)target;
-    (void)attachment;
-    (void)texture;
-    (void)level;
-    (void)layer;
-    fgl_unimplemented("glFramebufferTextureLayer");
 }
 
 void APIENTRY glTexBuffer(GLenum target, GLenum internalformat, GLuint buffer)

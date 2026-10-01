@@ -154,22 +154,29 @@ enum {
 };
 
 typedef struct fgl_vtx { /* an immediate mode vertex: object position, current attributes */
-    float pos[4], nrm[3], tex[2], col[4], tex1[2]; /* tex1: texture unit 1 (multitexture) */
+    float pos[4], nrm[3], tex[4], col[4], tex1[4]; /* s t r q; tex1: texture unit 1 (multitexture) */
 } fgl_vtx;
+
+/* texture binding targets (per texture unit) */
+enum { FGL_TT_2D = 0, FGL_TT_1D, FGL_TT_3D, FGL_TT_CUBE, FGL_TT_RECT, FGL_TT_1D_ARRAY, FGL_TT_2D_ARRAY, FGL_TT_COUNT };
 
 typedef struct fgl_tex {
     GLuint        name;
     int           used;
+    int           tt;     /* FGL_TT_*: the target of the first glBindTexture */
+    int           layers; /* images stacked top to bottom in level0: cube faces (+X -X +Y -Y +Z -Z), 3D slices, array layers */
     fm_surface*   level0; /* the image of level 0 (straight ARGB32) */
+    fm_surface**  view;   /* views of the layers of level0 (framebuffer attachments), made on demand */
     fm_surface*   depth;  /* depth textures: D32F / D24S8 / D16 instead of level0 */
     fm3d_texture* tex;    /* built on use (mipmaps from level 0) */
     int           built_mips;
     int           rendered; /* drawn into through a framebuffer since tex was built */
-    GLenum        min_filter, mag_filter, wrap_s, wrap_t;
+    GLenum        min_filter, mag_filter, wrap_s, wrap_t, wrap_r;
     GLenum        ifmt; /* glTexImage2D internal format */
     float         min_lod, max_lod, lod_bias, border[4];
     GLenum        compare_mode, compare_func;
     GLint         base_level, max_level;
+    GLenum        swizzle[4]; /* GL_TEXTURE_SWIZZLE_R / G / B / A (applied when the fatmap texture is built) */
 } fgl_tex;
 
 /* ---- GL 2.0 / 3.x objects ---- */
@@ -277,6 +284,7 @@ typedef struct fgl_attach {
     GLenum type; /* GL_NONE, GL_TEXTURE, GL_RENDERBUFFER */
     GLuint name;
     GLint  level;
+    GLint  layer; /* layered textures: the layer (cube maps: the face) */
 } fgl_attach;
 
 #define FGL_COLOR_ATTACHMENTS 8 /* accepted; only attachment 0 is drawn */
@@ -346,6 +354,7 @@ typedef struct fgl_ctx {
     int      clear_stencil;
     int      viewport[4], scissor[4];
     GLenum   depth_func, cull_face, front_face, shade_model;
+    GLenum   poly_mode[2]; /* glPolygonMode: front, back */
     GLboolean depth_mask, color_mask[4];
     GLenum   blend_src, blend_dst, blend_src_a, blend_dst_a; /* glBlendFuncSeparate */
     GLenum   blend_eq, blend_eq_a;                         /* glBlendEquationSeparate */
@@ -454,13 +463,13 @@ typedef struct fgl_ctx {
     GLenum provoking_vertex, logic_op;
     GLuint restart_index;
     int    restart_on; /* GL_PRIMITIVE_RESTART */
-    GLuint unit_tex[FGL_UNITS]; /* GL_TEXTURE_2D binding per texture unit */
+    GLuint unit_bind[FGL_TT_COUNT][FGL_UNITS]; /* texture bindings per target and texture unit */
     int    active_unit;
     float  attr_value[FGL_ATTRIBS][4]; /* generic attribute values (glVertexAttrib*) */
 
     /* client vertex arrays: vertex, normal, color, texcoord */
     fgl_clarray va[5]; /* [4]: texture coordinates of unit 1 */
-#define FGL_BOUND_TEX(c) ((c)->unit_tex[(c)->active_unit])
+#define FGL_BOUND_TEX(c) ((c)->unit_bind[FGL_TT_2D][(c)->active_unit])
 } fgl_ctx;
 
 fgl_ctx* fgl_cur(void);
@@ -480,7 +489,17 @@ void     fgl_flush(fgl_ctx* c);
 void fgl_sync(fgl_ctx* c);
 /* triangles of a primitive (GL_TRIANGLES .. GL_POLYGON) through fatmap */
 void fgl_draw_prim(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n);
+/* glPolygonMode of the faces drawn (GL_FILL, GL_LINE, GL_POINT) */
+GLenum fgl_polygon_mode(const fgl_ctx* c);
+/* the edges of the polygons of `mode` (GL_TRIANGLES .. GL_POLYGON) from vertex numbers (-1: primitive restart) as
+ * line index pairs relative to vmin; out holds 6 * count; returns the index count */
+int fgl_outline(GLenum mode, const int* vid, int count, int vmin, uint32_t* out);
 fgl_tex* fgl_texture(fgl_ctx* c, GLuint name, int create);
+int      fgl_tex_target(GLenum target);         /* FGL_TT_* of a texture target (cube faces: FGL_TT_CUBE), -1 if none */
+int      fgl_sampler_target(GLenum type);       /* FGL_TT_* of a sampler uniform type, -1 if not a sampler */
+#define  fgl_is_sampler(type) (fgl_sampler_target(type) >= 0 || (type) == GL_SAMPLER_CUBE_MAP_ARRAY || (type) == GL_SAMPLER_BUFFER)
+fm_surface* fgl_tex_layer(fgl_tex* t, int layer); /* a layer / face of level 0 (a view for layered textures) */
+void     fgl_tex_free(fgl_ctx* c, fgl_tex* t);  /* the images of t */
 /* fatmap texture + sampler of a GL texture object (built on demand); 0 without an image */
 int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_sampler* s);
 fgl_buf*     fgl_buffer(fgl_ctx* c, GLuint name);

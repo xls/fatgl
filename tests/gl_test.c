@@ -26,6 +26,17 @@ typedef ptrdiff_t GLsizeiptr;
 #define GL_COMPILE_STATUS               0x8B81
 #define GL_LINK_STATUS                  0x8B82
 #define GL_INCR                         0x1E02
+#define GL_TEXTURE_3D                   0x806F
+#define GL_TEXTURE_CUBE_MAP             0x8513
+#define GL_TEXTURE_CUBE_MAP_POSITIVE_X  0x8515
+#define GL_TEXTURE_2D_ARRAY             0x8C1A
+#define GL_TEXTURE_SWIZZLE_RGBA         0x8E46
+#define GL_TEXTURE_WRAP_R               0x8072
+#define GL_CLAMP_TO_EDGE                0x812F
+#define GL_TEXTURE0                     0x84C0
+#define GL_FRAMEBUFFER                  0x8D40
+#define GL_COLOR_ATTACHMENT0            0x8CE0
+#define GL_FRAMEBUFFER_COMPLETE         0x8CD5
 
 static int g_fail, g_pass;
 #define CHECK(cond, ...)                                \
@@ -65,6 +76,14 @@ GLFN(void, glProgramStringARB, (GLenum, GLenum, GLsizei, const void*))
 GLFN(void, glProgramEnvParameter4fARB, (GLenum, GLuint, GLfloat, GLfloat, GLfloat, GLfloat))
 GLFN(void, glProgramLocalParameter4fARB, (GLenum, GLuint, GLfloat, GLfloat, GLfloat, GLfloat))
 GLFN(void, glMultiTexCoord2fARB, (GLenum, GLfloat, GLfloat))
+GLFN(void, glUniform1i, (GLint, GLint))
+GLFN(void, glUniform3f, (GLint, GLfloat, GLfloat, GLfloat))
+GLFN(void, glTexImage3D, (GLenum, GLint, GLint, GLsizei, GLsizei, GLsizei, GLint, GLenum, GLenum, const void*))
+GLFN(void, glGenFramebuffers, (GLsizei, GLuint*))
+GLFN(void, glBindFramebuffer, (GLenum, GLuint))
+GLFN(void, glFramebufferTexture2D, (GLenum, GLenum, GLenum, GLuint, GLint))
+GLFN(GLenum, glCheckFramebufferStatus, (GLenum))
+GLFN(void, glDeleteFramebuffers, (GLsizei, const GLuint*))
 #define LOAD(name) name##_ = (PFN_##name)(void*)wglGetProcAddress(#name)
 
 static uint32_t px(int x, int y) /* RGBA bytes of the framebuffer as 0xAABBGGRR */
@@ -551,6 +570,213 @@ static void test_legacy_glsl(void)
     CHECK(close_to(a, want, 2), "gl_Color, gl_TexCoord, ftransform, gl_FragColor (%08x want %08x)", a, want);
 }
 
+/* a full window quad through a program with one fragment shader; returns the program */
+static GLuint fs_program(const char* fs)
+{
+    const char* vs = "#version 150\n"
+                     "in vec4 pos;\n"
+                     "void main() { gl_Position = pos; }\n";
+    GLuint p = glCreateProgram_();
+    glAttachShader_(p, compile(GL_VERTEX_SHADER, vs));
+    glAttachShader_(p, compile(GL_FRAGMENT_SHADER, fs));
+    glLinkProgram_(p);
+    GLint ok = 0;
+    glGetProgramiv_(p, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[2048];
+        glGetProgramInfoLog_(p, sizeof(log), NULL, log);
+        printf("  link log: %s\n", log);
+        return 0;
+    }
+    return p;
+}
+
+static void full_quad(void)
+{
+    glMatrixMode(GL_PROJECTION), glLoadIdentity(), glMatrixMode(GL_MODELVIEW), glLoadIdentity();
+    glBegin(GL_QUADS);
+    glVertex2f(-1, -1), glVertex2f(1, -1), glVertex2f(1, 1), glVertex2f(-1, 1);
+    glEnd();
+}
+
+static void nearest(GLenum target)
+{
+    glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+}
+
+/* cube maps, 2D arrays, 3D textures (GLSL and ARB programs), straight alpha, swizzles, cube faces as render targets */
+static void test_texture_targets(void)
+{
+    /* faces: +X red, -X green, +Y blue, -Y yellow, +Z cyan, -Z magenta (RGBA bytes as 0xAABBGGRR) */
+    static const uint32_t fc[6] = { 0xFF0000FFu, 0xFF00FF00u, 0xFFFF0000u, 0xFF00FFFFu, 0xFFFFFF00u, 0xFFFF00FFu };
+    static const float    dir[6][3] = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } };
+    GLuint                tx[5];
+    glGenTextures(5, tx);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, tx[0]);
+    for (int f = 0; f < 6; f++) {
+        uint32_t img[4] = { fc[f], fc[f], fc[f], fc[f] };
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)f, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
+    }
+    nearest(GL_TEXTURE_CUBE_MAP);
+    GLint bound = 0;
+    glGetIntegerv(0x8514, &bound); /* GL_TEXTURE_BINDING_CUBE_MAP */
+    CHECK(bound == (GLint)tx[0] && glGetError() == GL_NO_ERROR, "cube map faces uploaded (binding %d)", bound);
+    GLuint p = fs_program("#version 150\n"
+                          "uniform samplerCube cube;\n"
+                          "uniform vec3 dir;\n"
+                          "out vec4 col;\n"
+                          "void main() { col = texture(cube, dir); }\n");
+    CHECK(p != 0, "samplerCube program links");
+    if (p) {
+        glUseProgram_(p);
+        int bad = 0;
+        for (int f = 0; f < 6; f++) {
+            glUniform3f_(glGetUniformLocation_(p, "dir"), dir[f][0], dir[f][1], dir[f][2]);
+            full_quad();
+            if (px(32, 32) != fc[f]) bad++, printf("  face %d: %08x want %08x\n", f, px(32, 32), fc[f]);
+        }
+        glUseProgram_(0);
+        CHECK(bad == 0, "samplerCube picks the faces (%d wrong)", bad);
+    }
+    /* the same cube map through an ARB fragment program (TEX ... CUBE) */
+    const char* fp = "!!ARBfp1.0\n"
+                     "TEX result.color, fragment.texcoord[0], texture[0], CUBE;\n"
+                     "END\n";
+    GLuint pr;
+    glGenProgramsARB_(1, &pr);
+    glBindProgramARB_(0x8804, pr);
+    glProgramStringARB_(0x8804, 0x8875, (GLsizei)strlen(fp), fp);
+    glEnable(0x8804);
+    glMatrixMode(GL_PROJECTION), glLoadIdentity(), glMatrixMode(GL_MODELVIEW), glLoadIdentity();
+    glBegin(GL_QUADS);
+    glTexCoord3f(0, -1, 0), glVertex2f(-1, -1), glVertex2f(1, -1), glVertex2f(1, 1), glVertex2f(-1, 1);
+    glEnd();
+    glDisable(0x8804);
+    CHECK(px(32, 32) == fc[3], "ARB TEX CUBE (%08x)", px(32, 32));
+    /* a cube face as a render target: +Z cleared to white, then sampled */
+    GLuint fb;
+    glGenFramebuffers_(1, &fb);
+    glBindFramebuffer_(GL_FRAMEBUFFER, fb);
+    glFramebufferTexture2D_(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + 4, tx[0], 0);
+    GLenum st = glCheckFramebufferStatus_(GL_FRAMEBUFFER);
+    glClearColor(1, 1, 1, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindFramebuffer_(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers_(1, &fb);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    if (p) {
+        glUseProgram_(p);
+        glUniform3f_(glGetUniformLocation_(p, "dir"), 0, 0, 1);
+        full_quad();
+        uint32_t a = px(32, 32);
+        glUniform3f_(glGetUniformLocation_(p, "dir"), 0, 0, -1);
+        full_quad();
+        glUseProgram_(0);
+        CHECK(st == GL_FRAMEBUFFER_COMPLETE && a == 0xFFFFFFFFu && px(32, 32) == fc[5], "render into a cube face (%04x %08x %08x)", st, a,
+              px(32, 32));
+    }
+    /* a 2D array (3 layers) on unit 1 */
+    uint32_t layers[3][4];
+    for (int l = 0; l < 3; l++)
+        for (int i = 0; i < 4; i++) layers[l][i] = fc[l];
+    glActiveTextureARB_(GL_TEXTURE0 + 1);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, tx[1]);
+    glTexImage3D_(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA, 2, 2, 3, 0, GL_RGBA, GL_UNSIGNED_BYTE, layers);
+    nearest(GL_TEXTURE_2D_ARRAY);
+    glActiveTextureARB_(GL_TEXTURE0);
+    GLuint pa = fs_program("#version 150\n"
+                           "uniform sampler2DArray arr;\n"
+                           "uniform vec3 dir;\n"
+                           "out vec4 col;\n"
+                           "void main() { col = texture(arr, vec3(0.5, 0.5, dir.x)); }\n");
+    CHECK(pa != 0, "sampler2DArray program links");
+    if (pa) {
+        glUseProgram_(pa);
+        glUniform1i_(glGetUniformLocation_(pa, "arr"), 1);
+        int bad = 0;
+        for (int l = 0; l < 3; l++) {
+            glUniform3f_(glGetUniformLocation_(pa, "dir"), (float)l, 0, 0);
+            full_quad();
+            if (px(32, 32) != fc[l]) bad++, printf("  layer %d: %08x want %08x\n", l, px(32, 32), fc[l]);
+        }
+        glUseProgram_(0);
+        CHECK(bad == 0, "sampler2DArray layers (%d wrong)", bad);
+    }
+    /* a 3D texture: 1 x 1 x 2, red then blue, linear between the slices */
+    uint32_t vol[2] = { 0xFF0000FFu, 0xFFFF0000u };
+    glBindTexture(GL_TEXTURE_3D, tx[2]);
+    glTexImage3D_(GL_TEXTURE_3D, 0, GL_RGBA, 1, 1, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, vol);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    GLuint p3 = fs_program("#version 150\n"
+                           "uniform sampler3D vol;\n"
+                           "uniform vec3 dir;\n"
+                           "out vec4 col;\n"
+                           "void main() { col = texture(vol, vec3(0.5, 0.5, dir.x)); }\n");
+    CHECK(p3 != 0, "sampler3D program links");
+    if (p3) {
+        glUseProgram_(p3);
+        uint32_t got[3];
+        for (int i = 0; i < 3; i++) {
+            glUniform3f_(glGetUniformLocation_(p3, "dir"), 0.25f + 0.25f * (float)i, 0, 0);
+            full_quad();
+            got[i] = px(32, 32);
+        }
+        glUseProgram_(0);
+        CHECK(close_to(got[0], vol[0], 1) && close_to(got[1], 0xFF800080u, 2) && close_to(got[2], vol[1], 1), "sampler3D slices (%08x %08x %08x)",
+              got[0], got[1], got[2]);
+    }
+    /* straight alpha: shaders get the texel as stored (not un-premultiplied), and swizzles reorder it */
+    uint32_t half = 0x40804020u; /* r 0x20 g 0x40 b 0x80 a 0x40 */
+    glBindTexture(GL_TEXTURE_2D, tx[3]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &half);
+    nearest(GL_TEXTURE_2D);
+    GLuint p2 = fs_program("#version 150\n"
+                           "uniform sampler2D tex;\n"
+                           "out vec4 col;\n"
+                           "void main() { col = texture(tex, vec2(0.5)); }\n");
+    if (p2) {
+        glUseProgram_(p2);
+        full_quad();
+        uint32_t a = px(32, 32);
+        GLint    sw[4] = { GL_ALPHA, GL_BLUE, GL_GREEN, GL_ONE };
+        glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, sw);
+        full_quad();
+        glUseProgram_(0);
+        CHECK(close_to(a, half, 1), "shader texels keep straight alpha (%08x)", a);
+        CHECK(close_to(px(32, 32), 0xFF408040u, 1), "GL_TEXTURE_SWIZZLE_RGBA (%08x)", px(32, 32));
+    }
+    glDeleteTextures(5, tx);
+    CHECK(glGetError() == GL_NO_ERROR, "texture targets: no GL error");
+}
+
+/* glPolygonMode: edges (GL_LINE) and vertices (GL_POINT) instead of filled polygons */
+static void test_polygon_mode(void)
+{
+    ortho();
+    glDisable(GL_TEXTURE_2D);
+    for (int pass = 0; pass < 2; pass++) {
+        glClearColor(0, 0, 0, 1);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glPolygonMode(GL_FRONT_AND_BACK, pass ? GL_POINT : GL_LINE);
+        glColor3f(0, 1, 0);
+        glBegin(GL_QUADS);
+        glVertex2f(8.5f, 8.5f), glVertex2f(55.5f, 8.5f), glVertex2f(55.5f, 55.5f), glVertex2f(8.5f, 55.5f);
+        glEnd();
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        uint32_t e = px(8, 32), v = px(8, 8), m = px(32, 32), d = px(32, 31);
+        if (pass == 0) CHECK(e == 0xFF00FF00u && m == 0xFF000000u && d == 0xFF000000u, "GL_LINE: edges only (%08x %08x %08x)", e, m, d);
+        else CHECK(v == 0xFF00FF00u && e == 0xFF000000u && m == 0xFF000000u, "GL_POINT: vertices only (%08x %08x %08x)", v, e, m);
+    }
+    GLint pm[2] = { 0, 0 };
+    glGetIntegerv(0x0B40, pm); /* GL_POLYGON_MODE */
+    CHECK(pm[0] == GL_FILL && pm[1] == GL_FILL, "GL_POLYGON_MODE query");
+    glColor3f(1, 1, 1);
+}
+
 static LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp) { return DefWindowProcA(w, m, wp, lp); }
 
 int main(void)
@@ -581,6 +807,8 @@ int main(void)
     LOAD(glUseProgram), LOAD(glActiveTextureARB), LOAD(glMultiTexCoord2fARB);
     LOAD(glGenProgramsARB), LOAD(glBindProgramARB), LOAD(glProgramStringARB), LOAD(glProgramEnvParameter4fARB);
     LOAD(glProgramLocalParameter4fARB);
+    LOAD(glUniform1i), LOAD(glUniform3f), LOAD(glTexImage3D), LOAD(glGenFramebuffers), LOAD(glBindFramebuffer);
+    LOAD(glFramebufferTexture2D), LOAD(glCheckFramebufferStatus), LOAD(glDeleteFramebuffers);
     const char* ext = (const char*)glGetString(GL_EXTENSIONS);
     CHECK(ext && strstr(ext, "GL_ARB_multitexture") && strstr(ext, "GL_EXT_texture_compression_s3tc"), "GL_EXTENSIONS");
     CHECK(glActiveTextureARB_ && glMultiTexCoord2fARB_, "ARB multitexture entry points");
@@ -593,6 +821,8 @@ int main(void)
     test_texture_proj();
     test_frag_depth();
     test_vertex_only();
+    test_texture_targets();
+    test_polygon_mode();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);

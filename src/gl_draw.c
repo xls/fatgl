@@ -22,8 +22,8 @@ static void fgl_vertex(fgl_ctx* c, float x, float y, float z, float w)
     fgl_vtx* v = &c->imm[c->nimm++];
     v->pos[0] = x, v->pos[1] = y, v->pos[2] = z, v->pos[3] = w;
     memcpy(v->nrm, c->cur_normal, sizeof(v->nrm));
-    v->tex[0] = c->cur_tex[0], v->tex[1] = c->cur_tex[1];
-    v->tex1[0] = c->cur_tex1[0], v->tex1[1] = c->cur_tex1[1];
+    memcpy(v->tex, c->cur_tex, sizeof(v->tex));
+    memcpy(v->tex1, c->cur_tex1, sizeof(v->tex1));
     memcpy(v->col, c->cur_color, sizeof(v->col));
 }
 
@@ -80,8 +80,7 @@ void APIENTRY glMultiTexCoord4f(GLenum unit, GLfloat s, GLfloat t, GLfloat r, GL
     FGL_CTX_OR_RETURN(c);
     int u = (int)unit - GL_TEXTURE0;
     if (u == 0) {
-        glTexCoord2f(s, t);
-        c->cur_tex[2] = r, c->cur_tex[3] = q;
+        glTexCoord4f(s, t, r, q);
     } else if (u == 1) {
         c->cur_tex1[0] = s, c->cur_tex1[1] = t, c->cur_tex1[2] = r, c->cur_tex1[3] = q;
     }
@@ -132,15 +131,43 @@ void APIENTRY glClientActiveTexture(GLenum unit)
     c->client_unit = u;
 }
 
-void APIENTRY glTexCoord2f(GLfloat s, GLfloat t)
+void APIENTRY glTexCoord4f(GLfloat s, GLfloat t, GLfloat r, GLfloat q)
 {
     FGL_CTX_OR_RETURN(c);
-    FGL_REC(FGL_OP_TEXCOORD, 2, s, t);
-    c->cur_tex[0] = s, c->cur_tex[1] = t;
+    FGL_REC(FGL_OP_TEXCOORD, 4, s, t, r, q);
+    c->cur_tex[0] = s, c->cur_tex[1] = t, c->cur_tex[2] = r, c->cur_tex[3] = q;
 }
-void APIENTRY glTexCoord2fv(const GLfloat* v) { glTexCoord2f(v[0], v[1]); }
-void APIENTRY glTexCoord2d(GLdouble s, GLdouble t) { glTexCoord2f((float)s, (float)t); }
-void APIENTRY glTexCoord2i(GLint s, GLint t) { glTexCoord2f((float)s, (float)t); }
+void APIENTRY glTexCoord1f(GLfloat s) { glTexCoord4f(s, 0, 0, 1); }
+void APIENTRY glTexCoord2f(GLfloat s, GLfloat t) { glTexCoord4f(s, t, 0, 1); }
+void APIENTRY glTexCoord3f(GLfloat s, GLfloat t, GLfloat r) { glTexCoord4f(s, t, r, 1); }
+void APIENTRY glTexCoord1fv(const GLfloat* v) { glTexCoord4f(v[0], 0, 0, 1); }
+void APIENTRY glTexCoord2fv(const GLfloat* v) { glTexCoord4f(v[0], v[1], 0, 1); }
+void APIENTRY glTexCoord3fv(const GLfloat* v) { glTexCoord4f(v[0], v[1], v[2], 1); }
+void APIENTRY glTexCoord4fv(const GLfloat* v) { glTexCoord4f(v[0], v[1], v[2], v[3]); }
+void APIENTRY glTexCoord1d(GLdouble s) { glTexCoord4f((float)s, 0, 0, 1); }
+void APIENTRY glTexCoord2d(GLdouble s, GLdouble t) { glTexCoord4f((float)s, (float)t, 0, 1); }
+void APIENTRY glTexCoord3d(GLdouble s, GLdouble t, GLdouble r) { glTexCoord4f((float)s, (float)t, (float)r, 1); }
+void APIENTRY glTexCoord4d(GLdouble s, GLdouble t, GLdouble r, GLdouble q) { glTexCoord4f((float)s, (float)t, (float)r, (float)q); }
+void APIENTRY glTexCoord1dv(const GLdouble* v) { glTexCoord1d(v[0]); }
+void APIENTRY glTexCoord2dv(const GLdouble* v) { glTexCoord2d(v[0], v[1]); }
+void APIENTRY glTexCoord3dv(const GLdouble* v) { glTexCoord3d(v[0], v[1], v[2]); }
+void APIENTRY glTexCoord4dv(const GLdouble* v) { glTexCoord4d(v[0], v[1], v[2], v[3]); }
+void APIENTRY glTexCoord1i(GLint s) { glTexCoord4f((float)s, 0, 0, 1); }
+void APIENTRY glTexCoord2i(GLint s, GLint t) { glTexCoord4f((float)s, (float)t, 0, 1); }
+void APIENTRY glTexCoord3i(GLint s, GLint t, GLint r) { glTexCoord4f((float)s, (float)t, (float)r, 1); }
+void APIENTRY glTexCoord4i(GLint s, GLint t, GLint r, GLint q) { glTexCoord4f((float)s, (float)t, (float)r, (float)q); }
+void APIENTRY glTexCoord1iv(const GLint* v) { glTexCoord1i(v[0]); }
+void APIENTRY glTexCoord2iv(const GLint* v) { glTexCoord2i(v[0], v[1]); }
+void APIENTRY glTexCoord3iv(const GLint* v) { glTexCoord3i(v[0], v[1], v[2]); }
+void APIENTRY glTexCoord4iv(const GLint* v) { glTexCoord4i(v[0], v[1], v[2], v[3]); }
+void APIENTRY glTexCoord1s(GLshort s) { glTexCoord4f(s, 0, 0, 1); }
+void APIENTRY glTexCoord2s(GLshort s, GLshort t) { glTexCoord4f(s, t, 0, 1); }
+void APIENTRY glTexCoord3s(GLshort s, GLshort t, GLshort r) { glTexCoord4f(s, t, r, 1); }
+void APIENTRY glTexCoord4s(GLshort s, GLshort t, GLshort r, GLshort q) { glTexCoord4f(s, t, r, q); }
+void APIENTRY glTexCoord1sv(const GLshort* v) { glTexCoord1s(v[0]); }
+void APIENTRY glTexCoord2sv(const GLshort* v) { glTexCoord2s(v[0], v[1]); }
+void APIENTRY glTexCoord3sv(const GLshort* v) { glTexCoord3s(v[0], v[1], v[2]); }
+void APIENTRY glTexCoord4sv(const GLshort* v) { glTexCoord4s(v[0], v[1], v[2], v[3]); }
 
 void APIENTRY glBegin(GLenum mode)
 {
@@ -250,7 +277,7 @@ static void fgl_sync_fixed(fgl_ctx* c)
         fm3d_set_ambient_light(f, fm_v3(c->light_model_ambient[0], c->light_model_ambient[1], c->light_model_ambient[2]));
         fm3d_set_color_material(f, (c->enables & FGL_E_COLMAT) != 0);
     }
-    fgl_tex*      t = (c->tex2d_units & 1) && c->unit_tex[0] ? fgl_texture(c, c->unit_tex[0], 0) : NULL;
+    fgl_tex*      t = (c->tex2d_units & 1) && c->unit_bind[FGL_TT_2D][0] ? fgl_texture(c, c->unit_bind[FGL_TT_2D][0], 0) : NULL;
     fm3d_texture* ft = NULL;
     fm3d_sampler  s;
     if (fgl_texture_use(c, t, 0, &ft, &s)) {
@@ -260,7 +287,7 @@ static void fgl_sync_fixed(fgl_ctx* c)
         fm3d_set_texture(f, NULL, NULL);
     }
     /* texture unit 1: fatmap's second fixed stage (lightmaps) */
-    fgl_tex* t1 = (c->tex2d_units & 2) && c->unit_tex[1] ? fgl_texture(c, c->unit_tex[1], 0) : NULL;
+    fgl_tex* t1 = (c->tex2d_units & 2) && c->unit_bind[FGL_TT_2D][1] ? fgl_texture(c, c->unit_bind[FGL_TT_2D][1], 0) : NULL;
     if (fgl_texture_use(c, t1, 1, &ft, &s)) fm3d_set_texture_stage1(f, ft, &s, fgl_texenv(c->tex_envs[1]));
     else fm3d_set_texture_stage1(f, NULL, NULL, FM3D_TEXENV_MODULATE);
     if (c->enables & FGL_E_FOG) {
@@ -272,7 +299,7 @@ static void fgl_sync_fixed(fgl_ctx* c)
 }
 
 /* the vertices with a second set of texture coordinates when unit 1 is on */
-static int fgl_stage1(fgl_ctx* c) { return (c->tex2d_units & 2) && c->unit_tex[1] && !fgl_active_program(c); }
+static int fgl_stage1(fgl_ctx* c) { return (c->tex2d_units & 2) && c->unit_bind[FGL_TT_2D][1] && !fgl_active_program(c); }
 
 /* GL's provoking vertex for flat shading: the last vertex of each
  * triangle (the first vertex for GL_POLYGON) */
@@ -319,6 +346,24 @@ static void fgl_draw_lines(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n)
 
 void fgl_draw_prim(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n)
 {
+    GLenum pm = prim >= GL_TRIANGLES && prim <= GL_POLYGON ? fgl_polygon_mode(c) : GL_FILL;
+    if (pm == GL_POINT) { /* glPolygonMode: the vertices */
+        fgl_draw_lines(c, GL_POINTS, v, n);
+        return;
+    }
+    if (pm == GL_LINE) { /* the edges */
+        int*      vid = (int*)malloc((size_t)n * sizeof(int));
+        uint32_t* e   = (uint32_t*)malloc(((size_t)n * 6 + 8) * sizeof(uint32_t));
+        fgl_vtx*  ev  = (fgl_vtx*)malloc(((size_t)n * 6 + 8) * sizeof(fgl_vtx));
+        if (vid && e && ev) {
+            for (int i = 0; i < n; i++) vid[i] = i;
+            int ne = fgl_outline(prim, vid, n, 0, e);
+            for (int i = 0; i < ne; i++) ev[i] = v[e[i]];
+            fgl_draw_lines(c, GL_LINES, ev, ne);
+        } else fgl_error(GL_OUT_OF_MEMORY);
+        free(vid), free(e), free(ev);
+        return;
+    }
     int ntri = 0;
     switch (prim) {
     case GL_TRIANGLES: ntri = n / 3; break;
@@ -484,10 +529,14 @@ static void fgl_fetch(fgl_ctx* c, int e, fgl_vtx* v)
     } else {
         memcpy(v->col, c->cur_color, sizeof(v->col));
     }
-    if (c->va[3].on) for (int j = 0; j < 2 && j < c->va[3].size; j++) v->tex[j] = fgl_va_get(c, 3, e, j, 0);
-    else v->tex[0] = c->cur_tex[0], v->tex[1] = c->cur_tex[1];
-    if (c->va[4].on) for (int j = 0; j < 2 && j < c->va[4].size; j++) v->tex1[j] = fgl_va_get(c, 4, e, j, 0);
-    else v->tex1[0] = c->cur_tex1[0], v->tex1[1] = c->cur_tex1[1];
+    if (c->va[3].on) {
+        v->tex[0] = v->tex[1] = v->tex[2] = 0, v->tex[3] = 1;
+        for (int j = 0; j < 4 && j < c->va[3].size; j++) v->tex[j] = fgl_va_get(c, 3, e, j, 0);
+    } else memcpy(v->tex, c->cur_tex, sizeof(v->tex));
+    if (c->va[4].on) {
+        v->tex1[0] = v->tex1[1] = v->tex1[2] = 0, v->tex1[3] = 1;
+        for (int j = 0; j < 4 && j < c->va[4].size; j++) v->tex1[j] = fgl_va_get(c, 4, e, j, 0);
+    } else memcpy(v->tex1, c->cur_tex1, sizeof(v->tex1));
 }
 
 void APIENTRY glDrawArrays(GLenum mode, GLint first, GLsizei count)

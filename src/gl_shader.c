@@ -436,7 +436,20 @@ static GLenum sp_gltype(const sp_mod* m, uint32_t t, int mstride, int* bytes)
                                          { GL_FLOAT_MAT4x2, GL_FLOAT_MAT4x3, GL_FLOAT_MAT4 } };
         return mt[cols - 2][rows - 2];
     }
-    if (op == SP_OpTypeSampledImage) return *bytes = 0, GL_SAMPLER_2D;
+    if (op == SP_OpTypeSampledImage) { /* the GL sampler type of the image's dim / depth / arrayed */
+        const uint32_t* im = sp_def(m, d[2]);
+        *bytes             = 0;
+        if (!im) return GL_SAMPLER_2D;
+        uint32_t dim = im[3], shadow = im[4] == 1, arr = im[5];
+        switch (dim) {
+        case 0: return arr ? (shadow ? GL_SAMPLER_1D_ARRAY_SHADOW : GL_SAMPLER_1D_ARRAY) : (shadow ? GL_SAMPLER_1D_SHADOW : GL_SAMPLER_1D);
+        case 2: return GL_SAMPLER_3D;
+        case 3: return arr ? GL_SAMPLER_CUBE_MAP_ARRAY : (shadow ? GL_SAMPLER_CUBE_SHADOW : GL_SAMPLER_CUBE);
+        case 4: return shadow ? GL_SAMPLER_2D_RECT_SHADOW : GL_SAMPLER_2D_RECT;
+        case 5: return GL_SAMPLER_BUFFER;
+        default: return arr ? (shadow ? GL_SAMPLER_2D_ARRAY_SHADOW : GL_SAMPLER_2D_ARRAY) : (shadow ? GL_SAMPLER_2D_SHADOW : GL_SAMPLER_2D);
+        }
+    }
     return 0;
 }
 
@@ -546,7 +559,9 @@ static void fgl_reflect(fgl_program* p, int stage, const uint32_t* w, size_t n)
                 p->blocks[bi].spv_binding[stage] = binding;
                 p->blocks[bi].size               = sp_struct_size(&m, t);
             } else if (sc == 0 /* UniformConstant */) { /* a sampler */
-                int u = fgl_uniform_add(p, sp_name(&m, id, -1), GL_SAMPLER_2D, 1, stage, 0, 0, 0);
+                int    sb;
+                GLenum st = sp_gltype(&m, t, 0, &sb);
+                int    u  = fgl_uniform_add(p, sp_name(&m, id, -1), st ? st : GL_SAMPLER_2D, 1, stage, 0, 0, 0);
                 if (u >= 0) p->u[u].sampler_binding = binding;
             } else if (sc == 1 /* Input */ && stage == 0 && sp_deco(&m, id, -1, 11 /* BuiltIn */) < 0 && p->nin < FGL_ATTRIBS) {
                 int loc = sp_deco(&m, id, -1, 30 /* Location */);
@@ -868,7 +883,7 @@ static void fgl_uniform_write(fgl_ctx* c, GLint loc, GLsizei n, int comps, const
     fgl_uniform* u = fgl_uni(c, loc, &elem);
     if (!u) return;
     fgl_program* p = fgl_program_get(c, c->program);
-    if (u->type == GL_SAMPLER_2D) { /* the texture unit */
+    if (fgl_is_sampler(u->type)) { /* the texture unit */
         u->unit = *(const GLint*)src;
         return;
     }
@@ -977,7 +992,7 @@ void APIENTRY glGetUniformfv(GLuint name, GLint loc, GLfloat* v)
     fgl_uniform* u = &p->u[loc / 1024];
     int          k = u->off[0] >= 0 ? 0 : 1, bytes;
     (void)bytes;
-    if (u->type == GL_SAMPLER_2D) {
+    if (fgl_is_sampler(u->type)) {
         v[0] = (float)u->unit;
         return;
     }

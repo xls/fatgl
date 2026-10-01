@@ -114,7 +114,7 @@ static void fgl_replay(fgl_ctx* c, GLuint name)
         case FGL_OP_VERTEX: glVertex4f(f[0], f[1], f[2], f[3]); break;
         case FGL_OP_NORMAL: glNormal3f(f[0], f[1], f[2]); break;
         case FGL_OP_COLOR: glColor4f(f[0], f[1], f[2], f[3]); break;
-        case FGL_OP_TEXCOORD: glTexCoord2f(f[0], f[1]); break;
+        case FGL_OP_TEXCOORD: glTexCoord4f(f[0], f[1], f[2], f[3]); break;
         case FGL_OP_MATERIAL: glMaterialfv(o->e0, o->e1, f); break;
         case FGL_OP_LIGHT: glLightfv(o->e0, o->e1, f); break;
         case FGL_OP_LIGHTMODEL: glLightModelfv(o->e0, f); break;

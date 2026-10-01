@@ -24,6 +24,7 @@ void fgl_ctx_init(fgl_ctx* c)
     c->cull_face    = GL_BACK;
     c->front_face   = GL_CCW;
     c->shade_model  = GL_SMOOTH;
+    c->poly_mode[0] = c->poly_mode[1] = GL_FILL;
     c->blend_src    = c->blend_src_a = GL_ONE, c->blend_dst = c->blend_dst_a = GL_ZERO;
     c->blend_eq     = c->blend_eq_a = GL_FUNC_ADD;
     c->alpha_func   = GL_ALWAYS;
@@ -62,11 +63,7 @@ void fgl_ctx_init(fgl_ctx* c)
 void fgl_ctx_free(fgl_ctx* c)
 {
     fgl_flush(c);
-    for (int i = 0; i < c->ntex; i++) {
-        fm3d_texture_release(c->tex[i].tex);
-        fm_surface_destroy(c->tex[i].level0);
-        fm_surface_destroy(c->tex[i].depth);
-    }
+    for (int i = 0; i < c->ntex; i++) fgl_tex_free(c, &c->tex[i]);
     fgl_fbo_free(c);
     fgl_misc_free(c);
     fgl_overlay_free(c);
@@ -167,6 +164,7 @@ static void fgl_set_cap(GLenum cap, int on)
     }
     unsigned b = fgl_cap_bit(cap);
     if (!b) { /* dithering, smoothing, ...: accepted, not implemented */
+        /* GL_TEXTURE_1D / 3D / CUBE_MAP / RECTANGLE (fixed function: 2D only), GL_TEXTURE_CUBE_MAP_SEAMLESS (always) */
         if (cap == GL_DITHER || cap == GL_LINE_SMOOTH || cap == GL_POLYGON_SMOOTH || cap == GL_MULTISAMPLE) return;
         return;
     }
@@ -327,8 +325,20 @@ void APIENTRY glPixelStorei(GLenum p, GLint v)
 void APIENTRY glHint(GLenum target, GLenum mode) { (void)target, (void)mode; }
 void APIENTRY glPolygonMode(GLenum face, GLenum mode)
 {
-    (void)face;
-    if (mode != GL_FILL) fgl_unimplemented("glPolygonMode (GL_LINE / GL_POINT)");
+    FGL_CTX_OR_RETURN(c);
+    if ((face != GL_FRONT && face != GL_BACK && face != GL_FRONT_AND_BACK) || (mode != GL_FILL && mode != GL_LINE && mode != GL_POINT)) {
+        fgl_error(GL_INVALID_ENUM);
+        return;
+    }
+    if (face != GL_BACK) c->poly_mode[0] = mode;
+    if (face != GL_FRONT) c->poly_mode[1] = mode;
+}
+
+/* one mode per draw: the faces that survive culling (front unless only back faces do) */
+GLenum fgl_polygon_mode(const fgl_ctx* c)
+{
+    if (c->poly_mode[0] == c->poly_mode[1]) return c->poly_mode[0];
+    return (c->enables & FGL_E_CULL) && c->cull_face == GL_FRONT ? c->poly_mode[1] : c->poly_mode[0];
 }
 
 void APIENTRY glFlush(void)
@@ -458,7 +468,9 @@ static const char* g_ext[] = {
     "GL_ARB_half_float_vertex", "GL_ARB_half_float_pixel", "GL_ARB_texture_compression_rgtc", "GL_ARB_sync", "GL_ARB_timer_query",
     "GL_ARB_sampler_objects", "GL_ARB_vertex_type_2_10_10_10_rev", "GL_ARB_explicit_attrib_location",
     "GL_EXT_texture_filter_anisotropic", "GL_EXT_texture_lod_bias", "GL_ARB_debug_output", "GL_KHR_debug",
-    "GL_ARB_vertex_program", "GL_ARB_fragment_program" };
+    "GL_ARB_vertex_program", "GL_ARB_fragment_program", "GL_ARB_texture_cube_map", "GL_EXT_texture_cube_map", "GL_EXT_texture3D",
+    "GL_ARB_texture_rectangle", "GL_EXT_texture_rectangle", "GL_NV_texture_rectangle", "GL_EXT_texture_array",
+    "GL_ARB_seamless_cube_map", "GL_ARB_texture_swizzle", "GL_EXT_texture_swizzle" };
 #define FGL_NEXT ((int)(sizeof(g_ext) / sizeof(g_ext[0])))
 
 /* the GL_EXTENSIONS string (compatibility contexts), built once */
@@ -542,11 +554,19 @@ static int fgl_get_count(GLenum p, fgl_ctx* c, double* v)
     case GL_DEPTH_FUNC: v[0] = c->depth_func; return 1;
     case GL_DEPTH_WRITEMASK: v[0] = c->depth_mask; return 1;
     case GL_CULL_FACE_MODE: v[0] = c->cull_face; return 1;
+    case GL_POLYGON_MODE: v[0] = c->poly_mode[0], v[1] = c->poly_mode[1]; return 2;
     case GL_FRONT_FACE: v[0] = c->front_face; return 1;
     case GL_RED_BITS: case GL_GREEN_BITS: case GL_BLUE_BITS: case GL_ALPHA_BITS: v[0] = 8; return 1;
     case GL_DEPTH_BITS: v[0] = 24; return 1;
     case GL_STENCIL_BITS: v[0] = 8; return 1;
     case GL_TEXTURE_BINDING_2D: v[0] = FGL_BOUND_TEX(c); return 1;
+    case GL_TEXTURE_BINDING_1D: v[0] = c->unit_bind[FGL_TT_1D][c->active_unit]; return 1;
+    case GL_TEXTURE_BINDING_3D: v[0] = c->unit_bind[FGL_TT_3D][c->active_unit]; return 1;
+    case GL_TEXTURE_BINDING_CUBE_MAP: v[0] = c->unit_bind[FGL_TT_CUBE][c->active_unit]; return 1;
+    case GL_TEXTURE_BINDING_RECTANGLE: v[0] = c->unit_bind[FGL_TT_RECT][c->active_unit]; return 1;
+    case GL_TEXTURE_BINDING_1D_ARRAY: v[0] = c->unit_bind[FGL_TT_1D_ARRAY][c->active_unit]; return 1;
+    case GL_TEXTURE_BINDING_2D_ARRAY: v[0] = c->unit_bind[FGL_TT_2D_ARRAY][c->active_unit]; return 1;
+    case GL_MAX_RECTANGLE_TEXTURE_SIZE: v[0] = 8192; return 1;
     case GL_UNPACK_ALIGNMENT: v[0] = c->unpack_align; return 1;
     case GL_MODELVIEW_MATRIX: case GL_PROJECTION_MATRIX: case GL_TEXTURE_MATRIX: {
         int      m = p == GL_MODELVIEW_MATRIX ? FGL_MV : (p == GL_PROJECTION_MATRIX ? FGL_PROJ : FGL_TEXM);

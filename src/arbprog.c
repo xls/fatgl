@@ -1421,7 +1421,7 @@ fgl_program* fgl_arb_program(fgl_ctx* c)
     const fgl_arbprog* v = ve ? fgl_arb_get(c, c->arb_bound[0], 0) : NULL;
     const fgl_arbprog* f = fe ? fgl_arb_get(c, c->arb_bound[1], 0) : NULL;
     if ((ve && (!v || !v->valid)) || (fe && (!f || !f->valid))) return NULL; /* GL: INVALID_OPERATION at the draw */
-    int ftex = !f && (c->tex2d_units & 1) && c->unit_tex[0];
+    int ftex = !f && (c->tex2d_units & 1) && c->unit_bind[FGL_TT_2D][0];
     if (!v) v = fgl_arb_fixed(c, 0);
     if (!f) f = fgl_arb_fixed(c, ftex ? 1 : 2);
     if (!v || !f) return NULL;
@@ -1570,7 +1570,7 @@ size_t fgl_arb_block(fgl_ctx* c, int stage, float* out, size_t max)
     int                ve = (c->enables & FGL_E_VP) != 0, fe = (c->enables & FGL_E_FP) != 0;
     const fgl_arbprog* v  = ve ? fgl_arb_get(c, c->arb_bound[0], 0) : NULL;
     const fgl_arbprog* f  = fe ? fgl_arb_get(c, c->arb_bound[1], 0) : NULL;
-    int                ftex = !f && (c->tex2d_units & 1) && c->unit_tex[0];
+    int                ftex = !f && (c->tex2d_units & 1) && c->unit_bind[FGL_TT_2D][0];
     if (!v) v = fgl_arb_fixed(c, 0);
     if (!f) f = fgl_arb_fixed(c, ftex ? 1 : 2);
     const fgl_arbprog* p = stage ? f : v;

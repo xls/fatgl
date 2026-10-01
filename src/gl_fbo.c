@@ -231,7 +231,7 @@ static int fgl_attach_points(fgl_fbo* f, GLenum a, fgl_attach** p)
     return 0;
 }
 
-static void fgl_attach_to(fgl_ctx* c, GLenum target, GLenum attachment, GLenum type, GLuint name, GLint level)
+static void fgl_attach_to(fgl_ctx* c, GLenum target, GLenum attachment, GLenum type, GLuint name, GLint level, GLint layer)
 {
     fgl_fbo* f = fgl_target_fbo(c, target);
     if (!f) {
@@ -258,6 +258,7 @@ static void fgl_attach_to(fgl_ctx* c, GLenum target, GLenum attachment, GLenum t
         p[i]->type  = name ? type : GL_NONE;
         p[i]->name  = name;
         p[i]->level = level;
+        p[i]->layer = layer;
     }
     if (f->name == c->draw_fbo) c->tgt_color = NULL;
 }
@@ -265,17 +266,39 @@ static void fgl_attach_to(fgl_ctx* c, GLenum target, GLenum attachment, GLenum t
 void APIENTRY glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint tex, GLint level)
 {
     FGL_CTX_OR_RETURN(c);
-    if (tex && textarget != GL_TEXTURE_2D) {
-        fgl_unimplemented("glFramebufferTexture2D (targets other than GL_TEXTURE_2D)");
+    int face = textarget >= GL_TEXTURE_CUBE_MAP_POSITIVE_X && textarget <= GL_TEXTURE_CUBE_MAP_NEGATIVE_Z;
+    if (tex && textarget != GL_TEXTURE_2D && textarget != GL_TEXTURE_RECTANGLE && !face) {
+        fgl_error(GL_INVALID_ENUM);
         return;
     }
-    fgl_attach_to(c, target, attachment, GL_TEXTURE, tex, level);
+    fgl_attach_to(c, target, attachment, GL_TEXTURE, tex, level, face ? (GLint)(textarget - GL_TEXTURE_CUBE_MAP_POSITIVE_X) : 0);
 }
 
+void APIENTRY glFramebufferTexture1D(GLenum target, GLenum attachment, GLenum textarget, GLuint tex, GLint level)
+{
+    FGL_CTX_OR_RETURN(c);
+    (void)textarget;
+    fgl_attach_to(c, target, attachment, GL_TEXTURE, tex, level, 0);
+}
+
+void APIENTRY glFramebufferTexture3D(GLenum target, GLenum attachment, GLenum textarget, GLuint tex, GLint level, GLint z)
+{
+    FGL_CTX_OR_RETURN(c);
+    (void)textarget;
+    fgl_attach_to(c, target, attachment, GL_TEXTURE, tex, level, z);
+}
+
+void APIENTRY glFramebufferTextureLayer(GLenum target, GLenum attachment, GLuint tex, GLint level, GLint layer)
+{
+    FGL_CTX_OR_RETURN(c);
+    fgl_attach_to(c, target, attachment, GL_TEXTURE, tex, level, layer);
+}
+
+/* layered rendering (all layers at once) is not supported: layer 0 */
 void APIENTRY glFramebufferTexture(GLenum target, GLenum attachment, GLuint tex, GLint level)
 {
     FGL_CTX_OR_RETURN(c);
-    fgl_attach_to(c, target, attachment, GL_TEXTURE, tex, level);
+    fgl_attach_to(c, target, attachment, GL_TEXTURE, tex, level, 0);
 }
 
 void APIENTRY glFramebufferRenderbuffer(GLenum target, GLenum attachment, GLenum rbtarget, GLuint rb)
@@ -285,7 +308,7 @@ void APIENTRY glFramebufferRenderbuffer(GLenum target, GLenum attachment, GLenum
         fgl_error(GL_INVALID_ENUM);
         return;
     }
-    fgl_attach_to(c, target, attachment, GL_RENDERBUFFER, rb, 0);
+    fgl_attach_to(c, target, attachment, GL_RENDERBUFFER, rb, 0, 0);
 }
 
 static void fgl_detach_all(fgl_ctx* c, GLenum type, GLuint name)
@@ -316,7 +339,7 @@ static fm_surface* fgl_attach_surface(fgl_ctx* c, const fgl_attach* a, int depth
         fgl_tex* t = fgl_texture(c, a->name, 0);
         if (!t || a->level != 0) return NULL;
         if (tex) *tex = t;
-        return depth ? t->depth : t->level0;
+        return depth ? t->depth : fgl_tex_layer(t, a->layer);
     }
     return NULL;
 }
@@ -381,7 +404,8 @@ void APIENTRY glGetFramebufferAttachmentParameteriv(GLenum target, GLenum attach
     case GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE: *v = (GLint)a->type; break;
     case GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME: *v = (GLint)a->name; break;
     case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL: *v = a->level; break;
-    case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE: case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER:
+    case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE: *v = a->type == GL_TEXTURE ? (GLint)GL_TEXTURE_CUBE_MAP_POSITIVE_X + a->layer : 0; break;
+    case GL_FRAMEBUFFER_ATTACHMENT_TEXTURE_LAYER: *v = a->layer; break;
     case GL_FRAMEBUFFER_ATTACHMENT_LAYERED: *v = 0; break;
     case GL_FRAMEBUFFER_ATTACHMENT_RED_SIZE: case GL_FRAMEBUFFER_ATTACHMENT_GREEN_SIZE:
     case GL_FRAMEBUFFER_ATTACHMENT_BLUE_SIZE: case GL_FRAMEBUFFER_ATTACHMENT_ALPHA_SIZE: *v = s && !dep ? 8 : 0; break;

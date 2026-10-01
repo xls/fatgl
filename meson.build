@@ -20,7 +20,7 @@ endif
 if get_option('fatmap') == 'source' # a checkout (e.g. a junction / symlink) at subprojects/fatmap-src
   fatmap_dep = subproject('fatmap-src', default_options : ['tests=false', 'sandbox=disabled']).get_variable('fatmap_dep')
 else
-  fatmap_dep = dependency('fatmap', version : '>=0.6.0', fallback : ['fatmap', 'fatmap_dep'])
+  fatmap_dep = dependency('fatmap', version : '>=0.7.0', fallback : ['fatmap', 'fatmap_dep'])
 endif
 # GLSL -> SPIR-V (subprojects/glslang.wrap, our meson.build)
 glslang_dep = dependency('glslang', fallback : ['glslang', 'glslang_dep'])

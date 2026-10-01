@@ -94,6 +94,7 @@ static const fgl_attrib* fgl_input_source(fgl_ctx* c, const fgl_program* p, cons
         else if (!strcmp(n, "Normal")) k = 1, *val = c->cur_normal;
         else if (!strcmp(n, "Color")) k = 2, *val = c->cur_color;
         else if (!strcmp(n, "MultiTexCoord0")) k = 3, *val = c->cur_tex;
+        else if (!strcmp(n, "MultiTexCoord1")) k = 4, *val = c->cur_tex1;
         if (k == 0 && !c->va[0].on && vao->a[0].enabled) return &vao->a[0]; /* generic attribute 0 aliases gl_Vertex */
         if (k < 0 || !c->va[k].on) return NULL;
         memset(tmp, 0, sizeof(*tmp));
@@ -128,29 +129,67 @@ static fm_surface* fgl_depth_image(const fm_surface* d)
     return s;
 }
 
+static int fgl_swizzled(const fgl_tex* t)
+{
+    return t->swizzle[0] != GL_RED || t->swizzle[1] != GL_GREEN || t->swizzle[2] != GL_BLUE || t->swizzle[3] != GL_ALPHA;
+}
+
+/* level 0 with GL_TEXTURE_SWIZZLE_* applied (straight ARGB32) */
+static fm_surface* fgl_swizzle_image(const fgl_tex* t)
+{
+    const fm_surface* src = t->level0;
+    fm_surface*       s   = fm_surface_create(src->width, src->height, FM_FORMAT_ARGB32);
+    if (!s) return NULL;
+    int sh[4] = { 16, 8, 0, 24 }; /* r g b a in ARGB */
+    for (int y = 0; y < src->height; y++) {
+        const uint32_t* in  = fm_surface_row32(src, y);
+        uint32_t*       out = fm_surface_row32(s, y);
+        for (int x = 0; x < src->width; x++) {
+            uint32_t p = in[x], o = 0;
+            for (int k = 0; k < 4; k++) {
+                GLenum   w = t->swizzle[k];
+                uint32_t v = w == GL_ZERO ? 0u : (w == GL_ONE ? 255u : (p >> sh[w == GL_RED ? 0 : (w == GL_GREEN ? 1 : (w == GL_BLUE ? 2 : 3))]) & 255u);
+                o |= v << sh[k];
+            }
+            out[x] = o;
+        }
+    }
+    return s;
+}
+
 int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_sampler* s)
 {
     if (!t || (!t->level0 && !t->depth)) return 0;
     /* a sampler object on the unit overrides the texture's parameters */
     const fgl_sampler* so = unit >= 0 && unit < FGL_UNITS && c->unit_sampler[unit] ? fgl_sampler_get(c, c->unit_sampler[unit]) : NULL;
     GLenum min_filter = so ? so->min_filter : t->min_filter, mag_filter = so ? so->mag_filter : t->mag_filter;
-    GLenum wrap_s = so ? so->wrap_s : t->wrap_s, wrap_t = so ? so->wrap_t : t->wrap_t;
+    GLenum wrap_s = so ? so->wrap_s : t->wrap_s, wrap_t = so ? so->wrap_t : t->wrap_t, wrap_r = so ? so->wrap_r : t->wrap_r;
     int    mips = min_filter != GL_NEAREST && min_filter != GL_LINEAR;
     if (t->rendered) { /* drawn through a framebuffer: finish those draws, then copy the image again */
         fgl_flush(c);
         fm3d_texture_release(t->tex);
         t->tex = NULL, t->rendered = 0;
     }
+    if (t->tt == FGL_TT_RECT) mips = 0; /* rectangle textures have one level */
     if (!t->tex || t->built_mips != mips) {
         fm3d_texture_release(t->tex);
-        if (t->level0) {
-            t->tex = fm3d_texture_create(t->level0, mips);
-            c->cnt.tex_builds++;
-        } else {
-            fm_surface* img = fgl_depth_image(t->depth);
-            t->tex          = img ? fm3d_texture_create(img, mips) : NULL;
-            fm_surface_destroy(img);
+        /* straight: shaders sample the colors as stored (the fixed function does anyway) */
+        unsigned    flags = FM3D_TEXTURE_STRAIGHT | (mips ? FM3D_TEXTURE_MIPMAPS : 0);
+        fm_surface* img   = t->level0 ? (fgl_swizzled(t) ? fgl_swizzle_image(t) : NULL) : fgl_depth_image(t->depth);
+        const fm_surface* src = img ? img : t->level0;
+        if (src && t->layers > 1) { /* layers stacked in level 0: views of them */
+            fm_surface* lv[2048];
+            int         n = t->layers < 2048 ? t->layers : 2048, h = src->height / t->layers, ok = 1;
+            for (int i = 0; i < n; i++) ok &= (lv[i] = fm_surface_sub(src, 0, i * h, src->width, h)) != NULL;
+            fm3d_texture_kind kind = t->tt == FGL_TT_CUBE ? FM3D_TEX_CUBE : (t->tt == FGL_TT_3D ? FM3D_TEX_3D : FM3D_TEX_2D_ARRAY);
+            t->tex = ok ? fm3d_texture_create_layers(kind, (const fm_surface* const*)lv, n, flags) : NULL;
+            for (int i = 0; i < n; i++) fm_surface_destroy(lv[i]);
+        } else if (src) {
+            fm3d_texture_kind kind = t->tt == FGL_TT_1D_ARRAY ? FM3D_TEX_2D_ARRAY : (t->tt == FGL_TT_3D ? FM3D_TEX_3D : FM3D_TEX_2D);
+            t->tex = fm3d_texture_create_layers(kind, &src, 1, flags);
         }
+        fm_surface_destroy(img);
+        c->cnt.tex_builds++;
         t->built_mips = mips;
         if (!t->tex) return 0;
     }
@@ -165,6 +204,7 @@ int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_s
     if (mag_filter == GL_NEAREST && min_filter == GL_NEAREST) s->filter = FM3D_FILTER_NEAREST;
     s->wrap_u = wrap_s == GL_REPEAT ? FM_WRAP_REPEAT : (wrap_s == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
     s->wrap_v = wrap_t == GL_REPEAT ? FM_WRAP_REPEAT : (wrap_t == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
+    s->wrap_w = wrap_r == GL_REPEAT ? FM_WRAP_REPEAT : (wrap_r == GL_MIRRORED_REPEAT ? FM_WRAP_MIRROR : FM_WRAP_CLAMP);
     *tex      = t->tex;
     return 1;
 }
@@ -211,10 +251,11 @@ static void fgl_sync_program(fgl_ctx* c, fgl_program* p)
     }
     for (int i = 0; i < p->nu; i++) {
         const fgl_uniform* u = &p->u[i];
-        if (u->type != GL_SAMPLER_2D || u->sampler_binding < 0 || u->sampler_binding >= FM3D_MAX_TEXTURE_UNITS) continue;
+        int           tt = fgl_sampler_target(u->type);
+        if (tt < 0 || u->sampler_binding < 0 || u->sampler_binding >= FM3D_MAX_TEXTURE_UNITS) continue;
         fm3d_texture* t = NULL;
         fm3d_sampler  s;
-        GLuint        name = u->unit >= 0 && u->unit < FGL_UNITS ? c->unit_tex[u->unit] : 0;
+        GLuint        name = u->unit >= 0 && u->unit < FGL_UNITS ? c->unit_bind[tt][u->unit] : 0;
         if (fgl_texture_use(c, name ? fgl_texture(c, name, 0) : NULL, u->unit, &t, &s)) fm3d_set_texture_unit(f, u->sampler_binding, t, &s);
         else fm3d_set_texture_unit(f, u->sampler_binding, NULL, NULL);
     }
@@ -273,6 +314,42 @@ static int fgl_assemble(GLenum mode, const int* vid, int count, int vmin, uint32
     return k;
 }
 
+int fgl_outline(GLenum mode, const int* vid, int count, int vmin, uint32_t* out)
+{
+    int k = 0;
+    for (int s = 0; s < count;) {
+        int e = s;
+        while (e < count && vid[e] >= 0) e++;
+        int n = e - s;
+#define FGL_V(i)    (uint32_t)(vid[s + (i)] - vmin)
+#define FGL_E(i, j) (out[k++] = FGL_V(i), out[k++] = FGL_V(j))
+        switch (mode) {
+        case GL_TRIANGLES:
+            for (int i = 0; i + 2 < n; i += 3) FGL_E(i, i + 1), FGL_E(i + 1, i + 2), FGL_E(i + 2, i);
+            break;
+        case GL_TRIANGLE_STRIP:
+            for (int t = 0; t + 2 < n; t++) FGL_E(t, t + 1), FGL_E(t + 1, t + 2), FGL_E(t + 2, t);
+            break;
+        case GL_TRIANGLE_FAN:
+            for (int t = 0; t + 2 < n; t++) FGL_E(0, t + 1), FGL_E(t + 1, t + 2), FGL_E(t + 2, 0);
+            break;
+        case GL_QUADS:
+            for (int q = 0; q + 3 < n; q += 4) FGL_E(q, q + 1), FGL_E(q + 1, q + 2), FGL_E(q + 2, q + 3), FGL_E(q + 3, q);
+            break;
+        case GL_QUAD_STRIP: /* quad j = v[2j], v[2j+1], v[2j+3], v[2j+2] */
+            for (int q = 0; q + 3 < n; q += 2) FGL_E(q, q + 1), FGL_E(q + 1, q + 3), FGL_E(q + 3, q + 2), FGL_E(q + 2, q);
+            break;
+        default: /* GL_POLYGON */
+            for (int i = 0; n >= 3 && i < n; i++) FGL_E(i, (i + 1) % n);
+            break;
+        }
+#undef FGL_E
+#undef FGL_V
+        s = e + 1;
+    }
+    return k;
+}
+
 void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenum itype, const void* indices, GLint basevertex,
                       GLsizei instances)
 {
@@ -325,7 +402,7 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
         return;
     }
     /* primitives (indices relative to vmin) */
-    uint32_t* tri  = (uint32_t*)malloc(((size_t)count * 3 + 4) * sizeof(uint32_t));
+    uint32_t* tri  = (uint32_t*)malloc(((size_t)count * 6 + 8) * sizeof(uint32_t));
     int       stride = 16 * (p->max_loc + 1 > 0 ? p->max_loc + 1 : 1);
     uint8_t*  stream = (uint8_t*)malloc((size_t)nv * (size_t)stride);
     if (!tri || !stream) {
@@ -333,8 +410,10 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
         fgl_error(GL_OUT_OF_MEMORY);
         return;
     }
-    int nidx = fgl_assemble(mode, vid, count, vmin, tri);
-    fm3d_primitive prim = mode == GL_POINTS ? FM3D_PRIM_POINTS : (mode <= GL_LINE_STRIP ? FM3D_PRIM_LINES : FM3D_PRIM_TRIANGLES);
+    GLenum pm = mode >= GL_TRIANGLES ? fgl_polygon_mode(c) : GL_FILL; /* glPolygonMode: polygons as their edges / vertices */
+    if (pm == GL_POINT) mode = GL_POINTS;
+    int nidx = pm == GL_LINE ? fgl_outline(mode, vid, count, vmin, tri) : fgl_assemble(mode, vid, count, vmin, tri);
+    fm3d_primitive prim = mode == GL_POINTS ? FM3D_PRIM_POINTS : (mode <= GL_LINE_STRIP || pm == GL_LINE ? FM3D_PRIM_LINES : FM3D_PRIM_TRIANGLES);
     int per_instance = 0;
     for (int i = 0; i < p->nin; i++) {
         fgl_attrib        tmp;
@@ -388,11 +467,11 @@ fgl_program* fgl_active_program(fgl_ctx* c)
 void fgl_draw_program_imm(fgl_ctx* c, GLenum mode, const fgl_vtx* v, int n)
 {
     if (n <= 0) return;
-    fgl_clarray saved[4];
+    fgl_clarray saved[5];
     memcpy(saved, c->va, sizeof(saved));
-    const float* src[4] = { v->pos, v->nrm, v->col, v->tex };
-    int          size[4] = { 4, 3, 4, 2 };
-    for (int k = 0; k < 4; k++) {
+    const float* src[5] = { v->pos, v->nrm, v->col, v->tex, v->tex1 };
+    int          size[5] = { 4, 3, 4, 4, 4 };
+    for (int k = 0; k < 5; k++) {
         c->va[k].on = 1, c->va[k].size = size[k], c->va[k].type = GL_FLOAT;
         c->va[k].stride = (GLsizei)sizeof(fgl_vtx), c->va[k].ptr = src[k], c->va[k].buffer = 0;
     }
