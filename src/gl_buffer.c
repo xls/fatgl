@@ -3,6 +3,8 @@
  */
 #include "fgl.h"
 
+#include <malloc.h>
+
 /* ---- buffers ---- */
 fgl_buf* fgl_buffer(fgl_ctx* c, GLuint name)
 {
@@ -48,7 +50,7 @@ void APIENTRY glDeleteBuffers(GLsizei n, const GLuint* names)
     for (GLsizei i = 0; i < n; i++) {
         fgl_buf* b = fgl_buffer(c, names[i]);
         if (!b) continue;
-        free(b->data);
+        _aligned_free(b->data);
         memset(b, 0, sizeof(*b));
         GLuint nm = names[i];
         if (c->array_buffer == nm) c->array_buffer = 0;
@@ -116,14 +118,16 @@ void APIENTRY glBufferData(GLenum target, GLsizeiptr size, const void* data, GLe
     fgl_buf* b = fgl_bound(c, target);
     if (!b) return;
     fgl_flush(c); /* deferred draws were recorded with copies, but be safe */
-    uint8_t* n = (uint8_t*)malloc(size ? (size_t)size : 1);
+    /* 64 byte aligned like a driver's (GL_MIN_MAP_BUFFER_ALIGNMENT): applications stream into mapped
+     * buffers with aligned SSE stores (Doom 3 BFG: movntdq), and 32 bit malloc only aligns to 8 */
+    uint8_t* n = (uint8_t*)_aligned_malloc(size ? (size_t)size : 1, 64);
     if (!n) {
         fgl_error(GL_OUT_OF_MEMORY);
         return;
     }
     if (data && size) memcpy(n, data, (size_t)size);
     else memset(n, 0, size ? (size_t)size : 1);
-    free(b->data);
+    _aligned_free(b->data);
     b->data = n, b->size = size, b->usage = usage;
 }
 

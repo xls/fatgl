@@ -84,6 +84,12 @@ GLFN(void, glBindFramebuffer, (GLenum, GLuint))
 GLFN(void, glFramebufferTexture2D, (GLenum, GLenum, GLenum, GLuint, GLint))
 GLFN(GLenum, glCheckFramebufferStatus, (GLenum))
 GLFN(void, glDeleteFramebuffers, (GLsizei, const GLuint*))
+GLFN(void, glGenBuffers, (GLsizei, GLuint*))
+GLFN(void, glBindBuffer, (GLenum, GLuint))
+GLFN(void, glBufferData, (GLenum, ptrdiff_t, const void*, GLenum))
+GLFN(void*, glMapBufferRange, (GLenum, ptrdiff_t, ptrdiff_t, GLbitfield))
+GLFN(GLboolean, glUnmapBuffer, (GLenum))
+GLFN(void, glDeleteBuffers, (GLsizei, const GLuint*))
 #define LOAD(name) name##_ = (PFN_##name)(void*)wglGetProcAddress(#name)
 
 static uint32_t px(int x, int y) /* RGBA bytes of the framebuffer as 0xAABBGGRR */
@@ -777,6 +783,26 @@ static void test_polygon_mode(void)
     glColor3f(1, 1, 1);
 }
 
+/* mapped buffers are aligned like a driver's: Doom 3 BFG streams vertices into them with movntdq */
+static void test_map_alignment(void)
+{
+    GLuint b[4];
+    glGenBuffers_(4, b);
+    int bad = 0;
+    for (int i = 0; i < 4; i++) {
+        glBindBuffer_(0x8892, b[i]); /* GL_ARRAY_BUFFER */
+        glBufferData_(0x8892, 1000 + 24 * i, NULL, 0x88E8); /* GL_DYNAMIC_DRAW */
+        void* p = glMapBufferRange_(0x8892, 0, 1000, 0x0002 | 0x0020); /* GL_MAP_WRITE_BIT | GL_MAP_UNSYNCHRONIZED_BIT */
+        if (!p || ((uintptr_t)p & 63)) bad++;
+        glUnmapBuffer_(0x8892);
+    }
+    GLint al = 0;
+    glGetIntegerv(0x90BC, &al); /* GL_MIN_MAP_BUFFER_ALIGNMENT */
+    glBindBuffer_(0x8892, 0);
+    glDeleteBuffers_(4, b);
+    CHECK(bad == 0 && al == 64, "mapped buffers are 64 byte aligned (%d not, %d)", bad, al);
+}
+
 static LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp) { return DefWindowProcA(w, m, wp, lp); }
 
 int main(void)
@@ -809,6 +835,7 @@ int main(void)
     LOAD(glProgramLocalParameter4fARB);
     LOAD(glUniform1i), LOAD(glUniform3f), LOAD(glTexImage3D), LOAD(glGenFramebuffers), LOAD(glBindFramebuffer);
     LOAD(glFramebufferTexture2D), LOAD(glCheckFramebufferStatus), LOAD(glDeleteFramebuffers);
+    LOAD(glGenBuffers), LOAD(glBindBuffer), LOAD(glBufferData), LOAD(glMapBufferRange), LOAD(glUnmapBuffer), LOAD(glDeleteBuffers);
     const char* ext = (const char*)glGetString(GL_EXTENSIONS);
     CHECK(ext && strstr(ext, "GL_ARB_multitexture") && strstr(ext, "GL_EXT_texture_compression_s3tc"), "GL_EXTENSIONS");
     CHECK(glActiveTextureARB_ && glMultiTexCoord2fARB_, "ARB multitexture entry points");
@@ -823,6 +850,7 @@ int main(void)
     test_vertex_only();
     test_texture_targets();
     test_polygon_mode();
+    test_map_alignment();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);

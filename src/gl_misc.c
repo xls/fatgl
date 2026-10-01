@@ -701,6 +701,7 @@ int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
     case GL_SAMPLES: case GL_SAMPLE_BUFFERS: v[0] = 0; return 1;
     case GL_MAX_SERVER_WAIT_TIMEOUT: v[0] = 0; return 1;
     case GL_MAX_3D_TEXTURE_SIZE: v[0] = 2048; return 1;
+    case GL_MIN_MAP_BUFFER_ALIGNMENT: v[0] = 64; return 1;
     case GL_MAX_ARRAY_TEXTURE_LAYERS: v[0] = 2048; return 1;
     case GL_MAX_CUBE_MAP_TEXTURE_SIZE: v[0] = 8192; return 1;
     case GL_MAX_TEXTURE_LOD_BIAS: v[0] = 16; return 1;
