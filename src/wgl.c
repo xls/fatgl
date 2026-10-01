@@ -59,12 +59,14 @@ void fgl_log(const char* fmt, ...)
 
 /* ---- pixel formats ---- */
 typedef struct fgl_pf {
-    int double_buffer, depth, stencil;
+    int double_buffer, depth, stencil, samples;
 } fgl_pf;
 static const fgl_pf g_pf[] = {
-    { 1, 24, 8 }, /* 1: RGBA8, double buffered, depth 24, stencil 8 */
-    { 1, 0, 0 },  /* 2: RGBA8, double buffered, no depth */
-    { 0, 24, 8 }, /* 3: RGBA8, single buffered, depth 24, stencil 8 */
+    { 1, 24, 8, 1 }, /* 1: RGBA8, double buffered, depth 24, stencil 8 */
+    { 1, 0, 0, 1 },  /* 2: RGBA8, double buffered, no depth */
+    { 0, 24, 8, 1 }, /* 3: RGBA8, single buffered, depth 24, stencil 8 */
+    { 1, 24, 8, 4 }, /* 4: as 1, 4x MSAA (fatmap's sample patterns) */
+    { 1, 24, 8, 8 }, /* 5: as 1, 8x MSAA */
 };
 #define FGL_NPF ((int)(sizeof(g_pf) / sizeof(g_pf[0])))
 
@@ -168,6 +170,8 @@ BOOL WINAPI wglMakeCurrent(HDC hdc, HGLRC rc)
     t_cur = c, t_dc = c ? hdc : NULL;
     if (!c) return TRUE;
     c->hdc = hdc;
+    int fmt = wglGetPixelFormat(hdc), ms = fmt >= 1 && fmt <= FGL_NPF ? g_pf[fmt - 1].samples : 1;
+    if (ms != c->samples) c->samples = ms, c->tgt_color = NULL; /* the window's MSAA: rebound on the next draw */
     int w, h;
     fgl_client_size(hdc, &w, &h);
     fgl_resize(c, w, h);
@@ -325,7 +329,9 @@ static int fgl_pf_attrib(int fmt, int a)
     case WGL_RED_BITS_ARB: case WGL_GREEN_BITS_ARB: case WGL_BLUE_BITS_ARB: case WGL_ALPHA_BITS_ARB: return 8;
     case WGL_DEPTH_BITS_ARB: return f->depth;
     case WGL_STENCIL_BITS_ARB: return f->stencil;
-    default: return 0; /* no bitmaps, stereo, multisample buffers (fatmap MSAA is per context), sRGB */
+    case WGL_SAMPLE_BUFFERS_ARB: return f->samples > 1;
+    case WGL_SAMPLES_ARB: return f->samples > 1 ? f->samples : 0;
+    default: return 0; /* no bitmaps, stereo, sRGB */
     }
 }
 
@@ -348,18 +354,22 @@ BOOL WINAPI wglGetPixelFormatAttribfvARB(HDC hdc, int fmt, int layer, UINT n, co
 BOOL WINAPI wglChoosePixelFormatARB(HDC hdc, const int* ia, const FLOAT* fa, UINT max, int* formats, UINT* n)
 {
     (void)hdc, (void)fa;
-    int want_depth = -1, want_double = -1, ok = 1;
+    int want_depth = -1, want_double = -1, ok = 1, buffers = 0, samples = 0;
     for (; ia && ia[0]; ia += 2) {
         if (ia[0] == WGL_DEPTH_BITS_ARB) want_depth = ia[1];
         if (ia[0] == WGL_DOUBLE_BUFFER_ARB) want_double = ia[1];
         if (ia[0] == WGL_DRAW_TO_BITMAP_ARB && ia[1]) ok = 0;
         if (ia[0] == WGL_STEREO_ARB && ia[1]) ok = 0;
-        if (ia[0] == WGL_SAMPLE_BUFFERS_ARB && ia[1]) ok = 1; /* multisampled: give a plain format (best effort) */
+        if (ia[0] == WGL_SAMPLE_BUFFERS_ARB) buffers = ia[1];
+        if (ia[0] == WGL_SAMPLES_ARB) samples = ia[1];
     }
     *n = 0;
     if (!ok || max == 0) return TRUE;
-    formats[0] = want_double == 0 ? 3 : (want_depth == 0 ? 2 : 1);
-    *n         = 1;
+    if (buffers && samples > 1) /* MSAA: 4x for up to 4 samples, 8x above (16x asks get 8x, best effort) */
+        formats[0] = samples <= 4 ? 4 : 5;
+    else
+        formats[0] = want_double == 0 ? 3 : (want_depth == 0 ? 2 : 1);
+    *n = 1;
     return TRUE;
 }
 

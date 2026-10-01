@@ -500,8 +500,10 @@ void fgl_bind_draw(fgl_ctx* c)
         if (dep && col && (dep->width < col->width || dep->height < col->height)) dep = NULL; /* fatmap: depth covers the color target */
     }
     if (col != c->tgt_color || dep != c->tgt_depth || sten != c->tgt_stencil) {
+        int ms = f ? 1 : (c->samples > 1 ? c->samples : 1); /* MSAA is the window's; framebuffer objects have 1 sample */
         fm3d_set_target(c->c3, col, dep);
         fm3d_set_stencil_buffer(c->c3, sten);
+        if (fm3d_get_msaa(c->c3) != ms) fm3d_set_msaa(c->c3, ms);
         c->tgt_color = col, c->tgt_depth = dep, c->tgt_stencil = sten;
     }
     if (!write_color) fm3d_set_color_write(c->c3, 0);

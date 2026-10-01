@@ -1253,6 +1253,58 @@ static void test_color_mask(void)
     glClearColor(0, 0, 0, 1);
 }
 
+/* a multisampled window the way Doom 3 BFG asks for one (wglChoosePixelFormatARB with
+ * WGL_SAMPLE_BUFFERS / WGL_SAMPLES): the format reports its samples, GL_SAMPLES does,
+ * and edges come out anti-aliased */
+typedef BOOL(WINAPI* T_wglChoosePixelFormatARB)(HDC, const int*, const FLOAT*, UINT, int*, UINT*);
+typedef BOOL(WINAPI* T_wglGetPixelFormatAttribivARB)(HDC, int, int, UINT, const int*, int*);
+static void test_msaa_window(HDC dc0, HGLRC rc0, HINSTANCE inst)
+{
+    T_wglChoosePixelFormatARB      choose = (T_wglChoosePixelFormatARB)(void*)wglGetProcAddress("wglChoosePixelFormatARB");
+    T_wglGetPixelFormatAttribivARB attr   = (T_wglGetPixelFormatAttribivARB)(void*)wglGetProcAddress("wglGetPixelFormatAttribivARB");
+    CHECK(choose && attr, "WGL_ARB_pixel_format entry points");
+    if (!choose || !attr) return;
+    HWND win = CreateWindowA("fatgl_test", "fatgl msaa", WS_POPUP, 0, 0, 64, 64, NULL, NULL, inst, NULL);
+    HDC  dc  = GetDC(win);
+    int  ia[] = { 0x2041 /* WGL_SAMPLE_BUFFERS_ARB */, 1, 0x2042 /* WGL_SAMPLES_ARB */, 4, 0x2011 /* WGL_DOUBLE_BUFFER_ARB */, TRUE,
+                  0x2023 /* WGL_STENCIL_BITS_ARB */, 8, 0x2022 /* WGL_DEPTH_BITS_ARB */, 24, 0, 0 };
+    FLOAT fa[] = { 0, 0 };
+    int   fmt = 0;
+    UINT  n   = 0;
+    CHECK(choose(dc, ia, fa, 1, &fmt, &n) && n == 1, "wglChoosePixelFormatARB: a 4x MSAA format");
+    int q[2] = { 0x2041, 0x2042 }, v[2] = { 0, 0 };
+    attr(dc, fmt, 0, 2, q, v);
+    CHECK(v[0] == 1 && v[1] == 4, "the format has 4 samples (%d, %d)", v[0], v[1]);
+    PIXELFORMATDESCRIPTOR pfd;
+    DescribePixelFormat(dc, fmt, sizeof(pfd), &pfd);
+    SetPixelFormat(dc, fmt, &pfd);
+    HGLRC rc = wglCreateContext(dc);
+    wglMakeCurrent(dc, rc);
+    GLint samples = 0, buffers = 0;
+    glGetIntegerv(0x80A9 /* GL_SAMPLES */, &samples);
+    glGetIntegerv(0x80A8 /* GL_SAMPLE_BUFFERS */, &buffers);
+    CHECK(samples == 4 && buffers == 1, "GL_SAMPLES %d, GL_SAMPLE_BUFFERS %d", samples, buffers);
+    glViewport(0, 0, 64, 64);
+    ortho();
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glColor3f(1, 1, 1);
+    glBegin(GL_TRIANGLES);
+    glVertex2f(2, 2), glVertex2f(62, 20), glVertex2f(2, 60);
+    glEnd();
+    int partial = 0;
+    for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++) {
+            uint32_t g = (px(x, y) >> 8) & 255;
+            partial += g != 0 && g != 255;
+        }
+    CHECK(partial > 40, "MSAA window: anti-aliased edge pixels (%d)", partial);
+    wglMakeCurrent(dc0, rc0);
+    wglDeleteContext(rc);
+    ReleaseDC(win, dc);
+    DestroyWindow(win);
+}
+
 static LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp) { return DefWindowProcA(w, m, wp, lp); }
 
 int main(void)
@@ -1309,6 +1361,7 @@ int main(void)
     test_screen_copy();
     test_blend_matrix();
     test_color_mask();
+    test_msaa_window(dc, rc, wc.hInstance);
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);

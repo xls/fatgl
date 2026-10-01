@@ -698,7 +698,8 @@ int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
     case GL_MAX_SAMPLES: case GL_MAX_COLOR_TEXTURE_SAMPLES: case GL_MAX_DEPTH_TEXTURE_SAMPLES: case GL_MAX_INTEGER_SAMPLES:
         v[0] = 1;
         return 1;
-    case GL_SAMPLES: case GL_SAMPLE_BUFFERS: v[0] = 0; return 1;
+    case GL_SAMPLES: v[0] = !c->draw_fbo && c->samples > 1 ? c->samples : 0; return 1;
+    case GL_SAMPLE_BUFFERS: v[0] = !c->draw_fbo && c->samples > 1; return 1;
     case GL_MAX_SERVER_WAIT_TIMEOUT: v[0] = 0; return 1;
     case GL_MAX_3D_TEXTURE_SIZE: v[0] = 2048; return 1;
     case GL_MIN_MAP_BUFFER_ALIGNMENT: v[0] = 64; return 1;

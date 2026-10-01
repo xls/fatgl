@@ -436,6 +436,7 @@ typedef struct fgl_ctx {
     int         nfbos;
     GLuint      draw_fbo, read_fbo, renderbuffer;
     fm_surface* tgt_color; /* what the fatmap context renders into (NULL: rebind) */
+    int         samples;   /* the window's MSAA samples (its pixel format; 1: off) */
     fm_surface* tgt_depth;
     fm_surface* tgt_stencil;
     fgl_sampler* samplers;
