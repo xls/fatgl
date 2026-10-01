@@ -22,6 +22,17 @@ core plus the compatibility profile functions such as `glMultiTexCoord*`, and th
 | legacy GLSL | GLSL 1.10 .. 1.30 and compatibility profiles: rewritten to 3.30 before glslang (`attribute` / `varying`, `texture2D` & co., `gl_FragColor` / `gl_FragData`, `ftransform`); the fixed function state as GLSL sees it (`gl_Vertex`, `gl_Normal`, `gl_Color`, `gl_MultiTexCoord0`, `gl_ModelViewProjectionMatrix` and friends, `gl_NormalMatrix`, `gl_LightSource[]`, `gl_FrontMaterial`, `gl_LightModel`, `gl_TexCoord[]`, ...), fed from client arrays, immediate mode or the current values |
 | not yet | cube map arrays, mipmap levels given by the application (fatmap builds them from level 0), BPTC (BC7) textures, geometry shaders, transform feedback, more than one color output, multisampling, logic ops, float / integer render targets (stored as 8 bit unorm), shadow samplers, fog coordinates, more than two fixed function texture stages, texture coordinate generation, two sided lighting, wide smooth lines |
 
+Shaders: GLSL goes through glslang to SPIR-V, and fatmap compiles the
+SPIR-V to x86 machine code (a JIT for x86-64 and x86-32, AVX2 / AVX-512,
+16 pixels or vertices per pass). Programs the JIT does not cover, and CPUs
+without AVX2, run on fatmap's SPIR-V interpreter. Both produce the same
+bits. The JIT is part of fatmap after 0.8.0: build with `-Dfatmap=source`
+until the next fatmap release.
+
+Tested with Doom 3 BFG Edition (32 bit, GLSL shaders throughout):
+menus, Bink videos, in game rendering, shadow volumes,
+render to texture.
+
 Colors are kept the way GL keeps them: straight (not premultiplied) in
 textures and framebuffers, rows bottom up, so render to texture, blending
 and `glReadPixels` need no conversions.
@@ -30,10 +41,35 @@ Unimplemented entry points exist (so loaders and applications link) and
 report `GL_INVALID_OPERATION`. fatgl writes `fatgl.log` next to the
 executable: the DLL that was loaded (so you can tell it is fatgl), the
 contexts the application created, every unimplemented call it made (once
-each) and shader compile / link errors with their source.
-`FATGL_LOG=0` turns it off, `FATGL_LOG=<file>` writes elsewhere,
-`FATGL_VERBOSE=1` also prints unimplemented calls on stderr. `FATGL_THREADS=<n>` sets the render threads (default: every core), `FATGL_PRECISE_MATH=1` evaluates shader math within 1 ulp instead of GPU-like precision. `FATGL_DUMP_SPIRV=<dir>` writes every linked program's SPIR-V, `FATGL_LOAD_SPIRV=<dir>` uses such files instead (e.g. after `spirv-opt`). `tools/bench`: a Doom 3 BFG style benchmark for fatgl and Mesa llvmpipe. `GL_RENDERER`
+each) and shader compile / link errors with their source. `GL_RENDERER`
 reads "fatgl on fatmap ...".
+
+Environment variables:
+
+| | |
+|---|---|
+| `FATGL_LOG=0` / `FATGL_LOG=<file>` | no `fatgl.log` / write it elsewhere |
+| `FATGL_VERBOSE=1` | also print unimplemented calls on stderr |
+| `FATGL_THREADS=<n>` | render threads (default: every core) |
+| `FATGL_PRECISE_MATH=1` | shader math within 1 ulp instead of GPU-like precision (slower) |
+| `FATGL_DUMP_SPIRV=<dir>` | write every linked program's SPIR-V |
+| `FATGL_LOAD_SPIRV=<dir>` | use such files instead (e.g. after `spirv-opt`) |
+| `FM_JIT=0` | fatmap: run shaders on the interpreter instead of the JIT |
+
+## Performance
+
+`tools/bench`: Doom 3 BFG style light interactions (1280 x 720, 4 additive
+light passes, 5 trilinear textures each). The same GLSL and scene run on
+Mesa llvmpipe through `bench_interaction.py`. Frame times on a Ryzen 9
+9950X3D:
+
+| | 1 thread | 32 threads |
+|---|---|---|
+| fatgl, x64 | 366 ms | 27.9 ms |
+| fatgl, x86 (32 bit) | 479 ms | 31.6 ms |
+| Mesa llvmpipe 25.0 (LLVM 19, Linux x64) | 133 ms | 11.0 ms |
+
+Closing that gap is ongoing work (fatmap `docs/BACKLOG.md`).
 
 ### Plan
 
