@@ -1101,6 +1101,48 @@ static void test_bilinear_gray(void)
     glDeleteTextures(1, &t);
 }
 
+/* glCopyTexImage2D of the window sampled at gl_FragCoord / size reproduces it
+ * (Doom 3 BFG's _currentRender: glass, heat haze, post processing) */
+static void test_screen_copy(void)
+{
+    GLuint p = fs_program("#version 150\n"
+                          "uniform sampler2D tex;\n"
+                          "out vec4 col;\n"
+                          "void main() { col = texture(tex, gl_FragCoord.xy * vec2(1.0 / 64.0)); }\n");
+    CHECK(p != 0, "screen copy program links");
+    if (!p) return;
+    ortho();
+    glDisable(GL_TEXTURE_2D);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glColor3f(1, 0, 0), quad(0, 0, 32, 32);    /* red: bottom left */
+    glColor3f(0, 1, 0), quad(32, 0, 64, 32);   /* green: bottom right */
+    glColor3f(0, 0, 1), quad(0, 32, 32, 64);   /* blue: top left */
+    glColor3f(1, 1, 1), quad(32, 32, 64, 64);  /* white: top right */
+    glColor3f(1, 1, 1);
+    static uint32_t before[64 * 64], after[64 * 64];
+    glReadPixels(0, 0, 64, 64, GL_RGBA, GL_UNSIGNED_BYTE, before);
+    GLuint t;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glCopyTexImage2D(GL_TEXTURE_2D, 0, 0x8058 /* GL_RGBA8 */, 0, 0, 64, 64, 0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glUseProgram_(p);
+    full_quad();
+    glUseProgram_(0);
+    glReadPixels(0, 0, 64, 64, GL_RGBA, GL_UNSIGNED_BYTE, after);
+    int bad = 0, first = -1;
+    for (int i = 0; i < 64 * 64; i++)
+        if (!close_to(before[i], after[i], 2)) bad++, first = first < 0 ? i : first;
+    CHECK(bad == 0, "screen copy sampled at gl_FragCoord matches (%d off; first %d,%d: %08x was %08x)", bad, first % 64, first / 64,
+          first >= 0 ? after[first] : 0, first >= 0 ? before[first] : 0);
+    glDeleteTextures(1, &t);
+}
+
 static LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp) { return DefWindowProcA(w, m, wp, lp); }
 
 int main(void)
@@ -1154,6 +1196,7 @@ int main(void)
     test_bfg_interaction();
     test_border_and_formats();
     test_bilinear_gray();
+    test_screen_copy();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);
