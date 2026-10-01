@@ -104,6 +104,12 @@ static const fgl_attrib* fgl_input_source(fgl_ctx* c, const fgl_program* p, cons
     }
     int g = glGetAttribLocation(p->name, name);
     *val  = g >= 0 && g < FGL_ATTRIBS ? c->attr_value[g] : c->attr_value[0];
+    if (g == 0 && !vao->a[0].enabled && c->va[0].on) { /* compatibility: attribute 0 aliases glVertex / glVertexPointer */
+        memset(tmp, 0, sizeof(*tmp));
+        tmp->enabled = 1, tmp->size = c->va[0].size, tmp->type = c->va[0].type, tmp->stride = c->va[0].stride;
+        tmp->offset = (GLintptr)c->va[0].ptr, tmp->buffer = c->va[0].buffer;
+        return tmp;
+    }
     return g >= 0 && g < FGL_ATTRIBS && vao->a[g].enabled ? &vao->a[g] : NULL;
 }
 

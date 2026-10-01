@@ -402,6 +402,46 @@ static void test_bfg_glsl(void)
     CHECK(ok, "Doom 3 BFG gui.vfp links");
 }
 
+/* textureProj (Doom 3 BFG's tex2Dproj): q = 2 halves the coordinates */
+static void test_texture_proj(void)
+{
+    const char* vs = "#version 150\n"
+                     "in vec4 pos;\n"
+                     "out vec2 uv;\n"
+                     "void main() { uv = pos.xy * 0.5 + 0.5; gl_Position = pos; }\n";
+    const char* fs = "#version 150\n"
+                     "uniform sampler2D tex;\n"
+                     "in vec2 uv;\n"
+                     "out vec4 col;\n"
+                     "void main() { col = textureProj(tex, vec3(uv * 2.0, 2.0)) - texture(tex, uv) + vec4(0.5); }\n";
+    GLuint p = glCreateProgram_();
+    glAttachShader_(p, compile(GL_VERTEX_SHADER, vs));
+    glAttachShader_(p, compile(GL_FRAGMENT_SHADER, fs));
+    glLinkProgram_(p);
+    GLint ok = 0;
+    glGetProgramiv_(p, GL_LINK_STATUS, &ok);
+    CHECK(ok, "textureProj program links");
+    if (!ok) return;
+    uint32_t img[4] = { 0xFF0000FFu, 0xFF00FF00u, 0xFFFF0000u, 0xFFFFFFFFu };
+    GLuint   t;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 2, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE, img);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glUseProgram_(p);
+    glMatrixMode(GL_PROJECTION), glLoadIdentity(), glMatrixMode(GL_MODELVIEW), glLoadIdentity();
+    glBegin(GL_QUADS);
+    glVertex2f(-1, -1), glVertex2f(1, -1), glVertex2f(1, 1), glVertex2f(-1, 1);
+    glEnd();
+    glUseProgram_(0);
+    CHECK(close_to(px(10, 10), 0x80808080u, 1) && close_to(px(50, 50), 0x80808080u, 1), "textureProj = texture at q (%08x %08x)",
+          px(10, 10), px(50, 50));
+    glDeleteTextures(1, &t);
+}
+
 static void test_legacy_glsl(void)
 {
     /* GLSL 1.10 with the fixed function state */
@@ -469,6 +509,7 @@ int main(void)
     test_arb_programs();
     test_legacy_glsl();
     test_bfg_glsl();
+    test_texture_proj();
     CHECK(glGetError() == GL_NO_ERROR, "no GL error at the end (%04x)", glGetError());
     wglMakeCurrent(NULL, NULL);
     wglDeleteContext(rc);
