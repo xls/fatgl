@@ -1,0 +1,12 @@
+# fatmap release package (prebuilt static library), MinGW-w64 x64.
+# For development against a local fatmap, install it and point
+# PKG_CONFIG_PATH at <prefix>/lib/pkgconfig: the dependency is found first.
+[wrap-file]
+directory = fatmap-0.2.0-windows-x64-mingw
+source_url = https://github.com/xls/fatmap/releases/download/v0.2.0/fatmap-0.2.0-windows-x64-mingw.zip
+source_filename = fatmap-0.2.0-windows-x64-mingw.zip
+source_hash = 08207cc35563ad8bde549c1d5ddb04c002408258e5ae47d09bfdd9c9433ead53
+patch_directory = fatmap
+
+[provide]
+fatmap = fatmap_dep
