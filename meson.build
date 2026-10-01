@@ -1,5 +1,5 @@
 project('fatgl', 'c', 'cpp',
-  version : '0.1.0',
+  version : '0.5.0',
   license : 'MIT',
   meson_version : '>=1.3.0',
   default_options : [
@@ -26,6 +26,7 @@ endif
 glslang_dep = dependency('glslang', fallback : ['glslang', 'glslang_dep'])
 
 args = cc.get_supported_arguments(['-ffp-contract=off', '-Wno-unused-parameter'])
+args += ['-DFGL_VERSION="@0@"'.format(meson.project_version())] # the one place the version lives
 if cc.get_id() == 'msvc'
   args += ['-D_CRT_SECURE_NO_WARNINGS']
 endif

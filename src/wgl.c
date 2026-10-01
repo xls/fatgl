@@ -39,7 +39,7 @@ static void fgl_log_open(void)
     if (!g_log) return;
     InitializeCriticalSection(&g_log_lock);
     g_log_state = 1;
-    fprintf(g_log, "fatgl 0.1.0 on fatmap %s (%s, %d bit)\n", fm_version_string(), fm_simd_name(fm_simd_best()), (int)sizeof(void*) * 8);
+    fprintf(g_log, "fatgl " FGL_VERSION " on fatmap %s (%s, %d bit)\n", fm_version_string(), fm_simd_name(fm_simd_best()), (int)sizeof(void*) * 8);
     fprintf(g_log, "dll: %s\nexe: %s\n", dll, exe);
     fflush(g_log);
 }

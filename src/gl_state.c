@@ -442,7 +442,7 @@ const GLubyte* APIENTRY glGetString(GLenum name)
         snprintf(g_renderer, sizeof(g_renderer), "fatgl on fatmap %s (%s, %d threads)", fm_version_string(), fm_simd_name(fm_simd_best()),
                  c && c->ex ? c->ex->workers : 1);
         return (const GLubyte*)g_renderer;
-    case GL_VERSION: return (const GLubyte*)(c && c->core ? "3.3.0 Core Profile fatgl 0.1.0" : "3.3.0 fatgl 0.1.0");
+    case GL_VERSION: return (const GLubyte*)(c && c->core ? "3.3.0 Core Profile fatgl " FGL_VERSION : "3.3.0 fatgl " FGL_VERSION);
     case GL_SHADING_LANGUAGE_VERSION: return (const GLubyte*)"3.30 fatgl (glslang)";
     case GL_PROGRAM_ERROR_STRING_ARB: return (const GLubyte*)(c ? fgl_arb_error_string(c) : "");
     case GL_EXTENSIONS:

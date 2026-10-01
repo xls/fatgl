@@ -5,6 +5,10 @@
 #ifndef FGL_H
 #define FGL_H
 
+#ifndef FGL_VERSION /* meson.build passes the project version */
+#define FGL_VERSION "dev"
+#endif
+
 #define _GDI32_ /* wingdi.h: the wgl* functions are defined here, not imported */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
