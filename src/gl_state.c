@@ -30,6 +30,7 @@ void fgl_ctx_init(fgl_ctx* c)
     c->clear_depth  = 1.0f;
     c->unpack_align = c->pack_align = 4;
     c->tex_env      = GL_MODULATE;
+    c->enables |= FGL_E_DEBUG; /* GL_DEBUG_OUTPUT starts enabled */
     for (int u = 0; u < FGL_UNITS; u++) c->tex_envs[u] = GL_MODULATE;
     c->cur_tex1[3]  = 1;
     c->fog_mode = GL_EXP, c->fog_density = 1, c->fog_start = 0, c->fog_end = 1;
@@ -68,6 +69,7 @@ void fgl_ctx_free(fgl_ctx* c)
     }
     fgl_fbo_free(c);
     fgl_misc_free(c);
+    fgl_overlay_free(c);
     free(c->tex);
     for (int i = 0; i < c->nlists; i++) free(c->lists[i].ops);
     free(c->lists);
@@ -107,6 +109,11 @@ void fgl_error(GLenum e)
 {
     fgl_ctx* c = fgl_cur();
     if (c && c->error == GL_NO_ERROR) c->error = e;
+    if (c && c->dbg_cb) {
+        char m[64];
+        snprintf(m, sizeof(m), "GL error 0x%04X", (unsigned)e);
+        fgl_debug(c, GL_DEBUG_SOURCE_API, GL_DEBUG_TYPE_ERROR, GL_DEBUG_SEVERITY_HIGH, m);
+    }
 }
 
 GLenum APIENTRY glGetError(void)
@@ -135,6 +142,7 @@ static unsigned fgl_cap_bit(GLenum cap)
     case GL_STENCIL_TEST: return FGL_E_STENCIL;
     case GL_PRIMITIVE_RESTART: return FGL_E_RESTART;
     case GL_PROGRAM_POINT_SIZE: return FGL_E_PSIZE;
+    case GL_DEBUG_OUTPUT: return FGL_E_DEBUG;
     case GL_POLYGON_OFFSET_FILL: return FGL_E_POFFSET;
     default: return 0;
     }
@@ -444,7 +452,8 @@ static const char* g_ext[] = {
     "GL_ARB_framebuffer_object", "GL_ARB_vertex_array_object", "GL_ARB_uniform_buffer_object", "GL_ARB_draw_instanced",
     "GL_ARB_instanced_arrays", "GL_ARB_draw_elements_base_vertex", "GL_ARB_map_buffer_range", "GL_ARB_copy_buffer",
     "GL_ARB_half_float_vertex", "GL_ARB_half_float_pixel", "GL_ARB_texture_compression_rgtc", "GL_ARB_sync", "GL_ARB_timer_query",
-    "GL_ARB_sampler_objects", "GL_ARB_vertex_type_2_10_10_10_rev", "GL_ARB_explicit_attrib_location" };
+    "GL_ARB_sampler_objects", "GL_ARB_vertex_type_2_10_10_10_rev", "GL_ARB_explicit_attrib_location",
+    "GL_EXT_texture_filter_anisotropic", "GL_EXT_texture_lod_bias", "GL_ARB_debug_output", "GL_KHR_debug" };
 #define FGL_NEXT ((int)(sizeof(g_ext) / sizeof(g_ext[0])))
 
 /* the GL_EXTENSIONS string (compatibility contexts), built once */

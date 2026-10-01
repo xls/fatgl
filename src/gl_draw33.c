@@ -120,6 +120,7 @@ int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_s
         fm3d_texture_release(t->tex);
         if (t->level0) {
             t->tex = fm3d_texture_create(t->level0, mips);
+            c->cnt.tex_builds++;
         } else {
             fm_surface* img = fgl_depth_image(t->depth);
             t->tex          = img ? fm3d_texture_create(img, mips) : NULL;
@@ -336,6 +337,7 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
         }
         fm3d_set_draw_ids(c->c3, vmin, (int)inst);
         fm3d_draw_vertices(c->c3, stream, stride, nv, tri, nidx);
+        c->cnt.draws_prog++;
     }
     fm3d_set_draw_ids(c->c3, 0, 0);
     fm3d_set_primitive(c->c3, FM3D_PRIM_TRIANGLES);

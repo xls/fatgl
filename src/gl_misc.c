@@ -568,6 +568,58 @@ void APIENTRY glClearBufferfi(GLenum buffer, GLint draw, GLfloat depth, GLint st
     fgl_clear_with(c, GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT, NULL, depth, stencil);
 }
 
+/* ---- debug output (KHR_debug / ARB_debug_output): fatgl's errors,
+ * unimplemented calls and shader errors reach the application ---- */
+void fgl_debug(fgl_ctx* c, GLenum source, GLenum type, GLenum severity, const char* msg)
+{
+    if (!c || !c->dbg_cb || !(c->enables & FGL_E_DEBUG)) return;
+    GLDEBUGPROC cb = c->dbg_cb;
+    c->dbg_cb      = NULL; /* no recursion if the callback calls GL */
+    cb(source, type, 0, severity, (GLsizei)strlen(msg), msg, c->dbg_user);
+    c->dbg_cb = cb;
+}
+void APIENTRY glDebugMessageCallback(GLDEBUGPROC cb, const void* user)
+{
+    FGL_CTX_OR_RETURN(c);
+    c->dbg_cb = cb, c->dbg_user = user;
+}
+void APIENTRY glDebugMessageControl(GLenum source, GLenum type, GLenum severity, GLsizei n, const GLuint* ids, GLboolean on)
+{
+    (void)source, (void)type, (void)severity, (void)n, (void)ids, (void)on;
+}
+void APIENTRY glDebugMessageInsert(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei len, const GLchar* buf)
+{
+    FGL_CTX_OR_RETURN(c);
+    (void)id;
+    char m[1024];
+    size_t n = len < 0 ? strlen(buf) : (size_t)len;
+    n        = n < sizeof(m) - 1 ? n : sizeof(m) - 1;
+    memcpy(m, buf, n), m[n] = 0;
+    fgl_debug(c, source, type, severity, m);
+}
+GLuint APIENTRY glGetDebugMessageLog(GLuint count, GLsizei size, GLenum* sources, GLenum* types, GLuint* ids, GLenum* severities,
+                                     GLsizei* lengths, GLchar* log)
+{
+    (void)count, (void)size, (void)sources, (void)types, (void)ids, (void)severities, (void)lengths, (void)log;
+    return 0; /* messages go to the callback (and fatgl.log); none are queued */
+}
+void APIENTRY glPushDebugGroup(GLenum source, GLuint id, GLsizei len, const GLchar* msg) { (void)source, (void)id, (void)len, (void)msg; }
+void APIENTRY glPopDebugGroup(void) {}
+void APIENTRY glObjectLabel(GLenum id, GLuint name, GLsizei len, const GLchar* label) { (void)id, (void)name, (void)len, (void)label; }
+void APIENTRY glGetObjectLabel(GLenum id, GLuint name, GLsizei size, GLsizei* len, GLchar* label)
+{
+    (void)id, (void)name;
+    if (len) *len = 0;
+    if (label && size > 0) label[0] = 0;
+}
+void APIENTRY glObjectPtrLabel(const void* p, GLsizei len, const GLchar* label) { (void)p, (void)len, (void)label; }
+void APIENTRY glGetObjectPtrLabel(const void* p, GLsizei size, GLsizei* len, GLchar* label)
+{
+    (void)p;
+    if (len) *len = 0;
+    if (label && size > 0) label[0] = 0;
+}
+
 /* ---- fog (fixed function) ---- */
 static void fgl_fog(GLenum p, const float* v)
 {
@@ -623,6 +675,11 @@ int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
     case GL_FOG_END: v[0] = c->fog_end; return 1;
     case GL_FOG_COLOR: for (int i = 0; i < 4; i++) v[i] = c->fog_color[i]; return 4;
     case GL_MAX_TEXTURE_UNITS: v[0] = 2; return 1; /* fixed function texture stages */
+    case GL_MAX_DEBUG_MESSAGE_LENGTH: v[0] = 1024; return 1;
+    case GL_MAX_DEBUG_LOGGED_MESSAGES: case GL_DEBUG_LOGGED_MESSAGES: v[0] = 0; return 1;
+    case GL_MAX_DEBUG_GROUP_STACK_DEPTH: v[0] = 64; return 1;
+    case GL_MAX_LABEL_LENGTH: v[0] = 256; return 1;
+    case GL_DEBUG_CALLBACK_FUNCTION: case GL_DEBUG_CALLBACK_USER_PARAM: v[0] = 0; return 1;
     case GL_CLIENT_ACTIVE_TEXTURE: v[0] = GL_TEXTURE0 + c->client_unit; return 1;
     case GL_TEXTURE_ENV_MODE: v[0] = c->tex_envs[c->active_unit]; return 1;
     case GL_POINT_SIZE: v[0] = c->point_size; return 1;

@@ -67,7 +67,7 @@ Studio builds link the C runtime statically: the DLL needs only GDI32,
 USER32 and KERNEL32. `meson test` runs `tests/gl_test.c` through the
 built DLL (a hidden window).
 
-fatmap comes from its release package (`subprojects/fatmap.wrap`, v0.5.0),
+fatmap comes from its release package (`subprojects/fatmap.wrap`, v0.6.0),
 or with `-Dfatmap=source` from a fatmap checkout at
 `subprojects/fatmap-src` (a junction / symlink) when developing both.
 glslang (GLSL to SPIR-V) comes from

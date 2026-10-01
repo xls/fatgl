@@ -40,6 +40,22 @@ WGL_EXT = [
     "wglMakeContextCurrentARB", "wglGetCurrentReadDCARB",
 ]
 
+# newer than MAX_VERSION but implemented (debug output: GL 4.3 / KHR_debug /
+# ARB_debug_output); in the proc table when src/ defines them
+EXTRA_CORE = [
+    "glDebugMessageCallback", "glDebugMessageControl", "glDebugMessageInsert", "glGetDebugMessageLog",
+    "glPushDebugGroup", "glPopDebugGroup", "glObjectLabel", "glGetObjectLabel", "glObjectPtrLabel", "glGetObjectPtrLabel",
+]
+# names applications ask for that no header declares (drivers export them)
+EXTRA_ALIASES = {
+    "glGetQueryObjectui64vARB": "glGetQueryObjectui64v", "glGetQueryObjecti64vARB": "glGetQueryObjecti64v",
+    "glDebugMessageCallbackARB": "glDebugMessageCallback", "glDebugMessageControlARB": "glDebugMessageControl",
+    "glDebugMessageInsertARB": "glDebugMessageInsert", "glGetDebugMessageLogARB": "glGetDebugMessageLog",
+    "glDebugMessageCallbackKHR": "glDebugMessageCallback", "glDebugMessageControlKHR": "glDebugMessageControl",
+    "glDebugMessageInsertKHR": "glDebugMessageInsert", "glGetDebugMessageLogKHR": "glGetDebugMessageLog",
+    "glPushDebugGroupKHR": "glPushDebugGroup", "glPopDebugGroupKHR": "glPopDebugGroup", "glObjectLabelKHR": "glObjectLabel",
+}
+
 PROTO = re.compile(r"^\s*(?:GLAPI\s+)?(.+?)\s*APIENTRY\s+(gl\w+)\s*\((.*)\)\s*;")
 
 
@@ -179,6 +195,8 @@ def main():
         target = {n: n for n, _, _ in funcs}
         target.update({n: n for n in WGL_EXT})
         target.update(aliases)  # glGenBuffersARB -> glGenBuffers, ...
+        target.update({n: n for n in EXTRA_CORE if n in impl})
+        target.update({a: b for a, b in EXTRA_ALIASES.items() if b in target})
         allp = sorted(target)
         f.write("const fgl_proc fgl_procs[] = {\n")
         for name in allp:

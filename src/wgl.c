@@ -208,6 +208,7 @@ BOOL WINAPI wglSwapBuffers(HDC hdc)
     fgl_ctx* c = t_cur;
     if (!c) return FALSE;
     fgl_flush(c);
+    fgl_overlay_frame(c);
     BITMAPINFO bi;
     memset(&bi, 0, sizeof(bi));
     bi.bmiHeader.biSize        = sizeof(bi.bmiHeader);
@@ -421,5 +422,7 @@ void fgl_unimplemented(const char* name)
     snprintf(msg, sizeof(msg), "fatgl: %s is not implemented yet\n", name);
     OutputDebugStringA(msg);
     fgl_log("not implemented: %s\n", name);
+    fgl_ctx* c = fgl_cur();
+    if (c && c->dbg_cb) fgl_debug(c, GL_DEBUG_SOURCE_API, GL_DEBUG_TYPE_OTHER, GL_DEBUG_SEVERITY_MEDIUM, msg);
     if (getenv("FATGL_VERBOSE")) fputs(msg, stderr);
 }

@@ -108,7 +108,7 @@ enum {
     FGL_E_DEPTH = 1u << 0, FGL_E_CULL = 1u << 1, FGL_E_LIGHTING = 1u << 2, FGL_E_TEX2D = 1u << 3, FGL_E_BLEND = 1u << 4,
     FGL_E_ALPHA = 1u << 5, FGL_E_COLMAT = 1u << 6, FGL_E_NORMALIZE = 1u << 7, FGL_E_SCISSOR = 1u << 8,
     FGL_E_STENCIL = 1u << 9, FGL_E_POFFSET = 1u << 10, FGL_E_RESTART = 1u << 11,
-    FGL_E_PSIZE = 1u << 12, FGL_E_FOG = 1u << 13
+    FGL_E_PSIZE = 1u << 12, FGL_E_FOG = 1u << 13, FGL_E_DEBUG = 1u << 14
 };
 
 typedef struct fgl_vtx { /* an immediate mode vertex: object position, current attributes */
@@ -280,6 +280,11 @@ typedef struct fgl_clarray { /* a client vertex array (glVertexPointer & co.) */
     GLuint      buffer; /* GL_ARRAY_BUFFER when the pointer was set: ptr is an offset */
 } fgl_clarray;
 
+/* fatgl's per frame counters (the overlay) */
+typedef struct fgl_counters {
+    uint64_t draws_fixed, draws_prog, tex_builds, upload_bytes;
+} fgl_counters;
+
 typedef struct fgl_ctx {
     HDC          hdc;
     fm3d_ctx*    c3;
@@ -390,6 +395,10 @@ typedef struct fgl_ctx {
     } stencil[2]; /* front, back */
     float    point_size, line_width;
     uint8_t* builtins; /* the fgl_Builtins block of legacy GLSL programs */
+    fgl_counters cnt;  /* this frame */
+    GLDEBUGPROC  dbg_cb; /* glDebugMessageCallback */
+    const void*  dbg_user;
+    void*        overlay;
     GLenum provoking_vertex, logic_op;
     GLuint restart_index;
     int    restart_on; /* GL_PRIMITIVE_RESTART */
@@ -406,6 +415,10 @@ fgl_ctx* fgl_cur(void);
 void     fgl_error(GLenum e);
 void     fgl_unimplemented(const char* name);
 void     fgl_log(const char* fmt, ...); /* fatgl.log (wgl.c) */
+/* a debug output message to the application's glDebugMessageCallback */
+void     fgl_debug(fgl_ctx* c, GLenum source, GLenum type, GLenum severity, const char* msg);
+void     fgl_overlay_frame(fgl_ctx* c); /* overlay.c: F10 performance overlay, at SwapBuffers */
+void     fgl_overlay_free(fgl_ctx* c);
 void     fgl_ctx_init(fgl_ctx* c);
 void     fgl_ctx_free(fgl_ctx* c);
 int      fgl_resize(fgl_ctx* c, int w, int h);

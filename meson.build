@@ -20,12 +20,15 @@ endif
 if get_option('fatmap') == 'source' # a checkout (e.g. a junction / symlink) at subprojects/fatmap-src
   fatmap_dep = subproject('fatmap-src', default_options : ['tests=false', 'sandbox=disabled']).get_variable('fatmap_dep')
 else
-  fatmap_dep = dependency('fatmap', version : '>=0.5.0', fallback : ['fatmap', 'fatmap_dep'])
+  fatmap_dep = dependency('fatmap', version : '>=0.6.0', fallback : ['fatmap', 'fatmap_dep'])
 endif
 # GLSL -> SPIR-V (subprojects/glslang.wrap, our meson.build)
 glslang_dep = dependency('glslang', fallback : ['glslang', 'glslang_dep'])
 
 args = cc.get_supported_arguments(['-ffp-contract=off', '-Wno-unused-parameter'])
+if cc.get_id() == 'msvc'
+  args += ['-D_CRT_SECURE_NO_WARNINGS']
+endif
 
 sources = files(
   'src/wgl.c',
@@ -42,6 +45,7 @@ sources = files(
   'src/gl_misc.c',
   'src/glsl_legacy.c',
   'src/gl_pixels.c',
+  'src/overlay.c',
   'src/gen/gl_stubs.c',
   'src/gen/gl_procs.c',
 )
@@ -52,7 +56,7 @@ static_rt = cc.get_id() == 'msvc' ? [] : ['-static', '-static-libgcc']
 opengl32 = shared_library('opengl32', sources,
   name_prefix : '',
   c_args : args,
-  include_directories : include_directories('include', 'src'),
+  include_directories : include_directories('include', 'src', 'external/stb'),
   vs_module_defs : 'src/gen/opengl32.def',
   dependencies : [fatmap_dep, glslang_dep, cc.find_library('gdi32'), cc.find_library('user32')],
   link_language : 'cpp',

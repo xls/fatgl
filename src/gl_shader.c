@@ -650,7 +650,10 @@ void APIENTRY glLinkProgram(GLuint name)
             if (p->defsize[k]) p->def[k] = (uint8_t*)calloc(1, (size_t)p->defsize[k]);
         p->linked = 1;
     }
-    if (!p->linked) fgl_log("program %u does not link:\n%s\n", name, p->log ? p->log : "");
+    if (!p->linked) {
+        fgl_log("program %u does not link:\n%s\n", name, p->log ? p->log : "");
+        fgl_debug(c, GL_DEBUG_SOURCE_SHADER_COMPILER, GL_DEBUG_TYPE_ERROR, GL_DEBUG_SEVERITY_HIGH, p->log ? p->log : "link failed");
+    }
     for (int k = 0; k < 2; k++) {
         free(words[k]);
         if (sh[k]) glslang_shader_delete(sh[k]);

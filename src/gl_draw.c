@@ -312,6 +312,7 @@ static void fgl_draw_lines(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n)
     fm3d_set_line_width(c->c3, c->line_width);
     fm3d_set_point_size(c->c3, c->point_size);
     fm3d_draw(c->c3, t, np * per);
+    c->cnt.draws_fixed++;
     fm3d_set_primitive(c->c3, FM3D_PRIM_TRIANGLES);
     free(t);
 }
@@ -385,6 +386,7 @@ void fgl_draw_prim(fgl_ctx* c, GLenum prim, const fgl_vtx* v, int n)
     fgl_sync(c);
     fm3d_set_program(c->c3, NULL); /* fixed function */
     fgl_sync_fixed(c);
+    c->cnt.draws_fixed++;
     if (mt) {
         for (int i = 0; i < k; i++) tm2[i].v = t[i];
         fm3d_draw_mt(c->c3, tm2, k, NULL, k);

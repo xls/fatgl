@@ -87,6 +87,7 @@ static void fgl_upload(fgl_ctx* c, fm_surface* s, int x0, int y0, int w, int h, 
         if (!bpp) fgl_unimplemented("glTexImage2D / glTexSubImage2D (this format / type)");
         return;
     }
+    c->cnt.upload_bytes += (uint64_t)w * (uint64_t)h * (uint64_t)bpp;
     int    rowpx  = c->unpack_row > 0 ? c->unpack_row : w;
     size_t stride = (size_t)rowpx * (size_t)bpp;
     stride        = (stride + (size_t)c->unpack_align - 1) / (size_t)c->unpack_align * (size_t)c->unpack_align;
