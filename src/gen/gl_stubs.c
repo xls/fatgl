@@ -1735,15 +1735,6 @@ void APIENTRY glGetCompressedTexImage(GLenum target, GLint level, void *img)
     fgl_unimplemented("glGetCompressedTexImage");
 }
 
-void APIENTRY glBlendFuncSeparate(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha)
-{
-    (void)sfactorRGB;
-    (void)dfactorRGB;
-    (void)sfactorAlpha;
-    (void)dfactorAlpha;
-    fgl_unimplemented("glBlendFuncSeparate");
-}
-
 void APIENTRY glPointParameterf(GLenum pname, GLfloat param)
 {
     (void)pname;
@@ -1770,21 +1761,6 @@ void APIENTRY glPointParameteriv(GLenum pname, const GLint *params)
     (void)pname;
     (void)params;
     fgl_unimplemented("glPointParameteriv");
-}
-
-void APIENTRY glBlendColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha)
-{
-    (void)red;
-    (void)green;
-    (void)blue;
-    (void)alpha;
-    fgl_unimplemented("glBlendColor");
-}
-
-void APIENTRY glBlendEquation(GLenum mode)
-{
-    (void)mode;
-    fgl_unimplemented("glBlendEquation");
 }
 
 void APIENTRY glGenQueries(GLsizei n, GLuint *ids)
@@ -1851,20 +1827,6 @@ void APIENTRY glGetBufferPointerv(GLenum target, GLenum pname, void **params)
     (void)pname;
     (void)params;
     fgl_unimplemented("glGetBufferPointerv");
-}
-
-void APIENTRY glBlendEquationSeparate(GLenum modeRGB, GLenum modeAlpha)
-{
-    (void)modeRGB;
-    (void)modeAlpha;
-    fgl_unimplemented("glBlendEquationSeparate");
-}
-
-void APIENTRY glDrawBuffers(GLsizei n, const GLenum *bufs)
-{
-    (void)n;
-    (void)bufs;
-    fgl_unimplemented("glDrawBuffers");
 }
 
 void APIENTRY glStencilOpSeparate(GLenum face, GLenum sfail, GLenum dpfail, GLenum dppass)
@@ -2467,86 +2429,6 @@ void APIENTRY glClearBufferfi(GLenum buffer, GLint drawbuffer, GLfloat depth, GL
     fgl_unimplemented("glClearBufferfi");
 }
 
-GLboolean APIENTRY glIsRenderbuffer(GLuint renderbuffer)
-{
-    (void)renderbuffer;
-    fgl_unimplemented("glIsRenderbuffer");
-    return (GLboolean)0;
-}
-
-void APIENTRY glBindRenderbuffer(GLenum target, GLuint renderbuffer)
-{
-    (void)target;
-    (void)renderbuffer;
-    fgl_unimplemented("glBindRenderbuffer");
-}
-
-void APIENTRY glDeleteRenderbuffers(GLsizei n, const GLuint *renderbuffers)
-{
-    (void)n;
-    (void)renderbuffers;
-    fgl_unimplemented("glDeleteRenderbuffers");
-}
-
-void APIENTRY glGenRenderbuffers(GLsizei n, GLuint *renderbuffers)
-{
-    (void)n;
-    (void)renderbuffers;
-    fgl_unimplemented("glGenRenderbuffers");
-}
-
-void APIENTRY glRenderbufferStorage(GLenum target, GLenum internalformat, GLsizei width, GLsizei height)
-{
-    (void)target;
-    (void)internalformat;
-    (void)width;
-    (void)height;
-    fgl_unimplemented("glRenderbufferStorage");
-}
-
-void APIENTRY glGetRenderbufferParameteriv(GLenum target, GLenum pname, GLint *params)
-{
-    (void)target;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetRenderbufferParameteriv");
-}
-
-GLboolean APIENTRY glIsFramebuffer(GLuint framebuffer)
-{
-    (void)framebuffer;
-    fgl_unimplemented("glIsFramebuffer");
-    return (GLboolean)0;
-}
-
-void APIENTRY glBindFramebuffer(GLenum target, GLuint framebuffer)
-{
-    (void)target;
-    (void)framebuffer;
-    fgl_unimplemented("glBindFramebuffer");
-}
-
-void APIENTRY glDeleteFramebuffers(GLsizei n, const GLuint *framebuffers)
-{
-    (void)n;
-    (void)framebuffers;
-    fgl_unimplemented("glDeleteFramebuffers");
-}
-
-void APIENTRY glGenFramebuffers(GLsizei n, GLuint *framebuffers)
-{
-    (void)n;
-    (void)framebuffers;
-    fgl_unimplemented("glGenFramebuffers");
-}
-
-GLenum APIENTRY glCheckFramebufferStatus(GLenum target)
-{
-    (void)target;
-    fgl_unimplemented("glCheckFramebufferStatus");
-    return (GLenum)0;
-}
-
 void APIENTRY glFramebufferTexture1D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
 {
     (void)target;
@@ -2555,16 +2437,6 @@ void APIENTRY glFramebufferTexture1D(GLenum target, GLenum attachment, GLenum te
     (void)texture;
     (void)level;
     fgl_unimplemented("glFramebufferTexture1D");
-}
-
-void APIENTRY glFramebufferTexture2D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level)
-{
-    (void)target;
-    (void)attachment;
-    (void)textarget;
-    (void)texture;
-    (void)level;
-    fgl_unimplemented("glFramebufferTexture2D");
 }
 
 void APIENTRY glFramebufferTexture3D(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLint zoffset)
@@ -2576,49 +2448,6 @@ void APIENTRY glFramebufferTexture3D(GLenum target, GLenum attachment, GLenum te
     (void)level;
     (void)zoffset;
     fgl_unimplemented("glFramebufferTexture3D");
-}
-
-void APIENTRY glFramebufferRenderbuffer(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer)
-{
-    (void)target;
-    (void)attachment;
-    (void)renderbuffertarget;
-    (void)renderbuffer;
-    fgl_unimplemented("glFramebufferRenderbuffer");
-}
-
-void APIENTRY glGetFramebufferAttachmentParameteriv(GLenum target, GLenum attachment, GLenum pname, GLint *params)
-{
-    (void)target;
-    (void)attachment;
-    (void)pname;
-    (void)params;
-    fgl_unimplemented("glGetFramebufferAttachmentParameteriv");
-}
-
-void APIENTRY glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter)
-{
-    (void)srcX0;
-    (void)srcY0;
-    (void)srcX1;
-    (void)srcY1;
-    (void)dstX0;
-    (void)dstY0;
-    (void)dstX1;
-    (void)dstY1;
-    (void)mask;
-    (void)filter;
-    fgl_unimplemented("glBlitFramebuffer");
-}
-
-void APIENTRY glRenderbufferStorageMultisample(GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)
-{
-    (void)target;
-    (void)samples;
-    (void)internalformat;
-    (void)width;
-    (void)height;
-    fgl_unimplemented("glRenderbufferStorageMultisample");
 }
 
 void APIENTRY glFramebufferTextureLayer(GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer)
@@ -2760,15 +2589,6 @@ void APIENTRY glGetBufferParameteri64v(GLenum target, GLenum pname, GLint64 *par
     (void)pname;
     (void)params;
     fgl_unimplemented("glGetBufferParameteri64v");
-}
-
-void APIENTRY glFramebufferTexture(GLenum target, GLenum attachment, GLuint texture, GLint level)
-{
-    (void)target;
-    (void)attachment;
-    (void)texture;
-    (void)level;
-    fgl_unimplemented("glFramebufferTexture");
 }
 
 void APIENTRY glTexImage2DMultisample(GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height, GLboolean fixedsamplelocations)

@@ -159,8 +159,8 @@ BOOL WINAPI wglSwapBuffers(HDC hdc)
     BITMAPINFO bi;
     memset(&bi, 0, sizeof(bi));
     bi.bmiHeader.biSize        = sizeof(bi.bmiHeader);
-    bi.bmiHeader.biWidth       = c->fbw;
-    bi.bmiHeader.biHeight      = -c->fbh; /* top down rows */
+    bi.bmiHeader.biWidth       = c->color->stride / 4; /* rows padded by fatmap */
+    bi.bmiHeader.biHeight      = c->fbh;               /* bottom up rows, as GL draws them */
     bi.bmiHeader.biPlanes      = 1;
     bi.bmiHeader.biBitCount    = 32;
     bi.bmiHeader.biCompression = BI_RGB;

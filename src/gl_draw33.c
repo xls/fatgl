@@ -60,15 +60,41 @@ static const uint8_t* fgl_attr_base(fgl_ctx* c, const fgl_attrib* a)
     return b && b->data ? b->data + a->offset : NULL;
 }
 
+/* a depth texture as fatmap sees it: (d, d, d, 1), 8 bits */
+static fm_surface* fgl_depth_image(const fm_surface* d)
+{
+    fm_surface* s = fm_surface_create(d->width, d->height, FM_FORMAT_ARGB32);
+    if (!s) return NULL;
+    for (int y = 0; y < d->height; y++) {
+        uint32_t* o = fm_surface_row32(s, y);
+        for (int x = 0; x < d->width; x++) {
+            uint32_t v = (uint32_t)(fgl_depth_at(d, x, y) * 255.0f + 0.5f);
+            o[x]       = 0xFF000000u | v << 16 | v << 8 | v;
+        }
+    }
+    return s;
+}
+
 int fgl_texture_use(fgl_ctx* c, fgl_tex* t, fm3d_texture** tex, fm3d_sampler* s)
 {
-    (void)c;
-    if (!t || !t->level0) return 0;
+    if (!t || (!t->level0 && !t->depth)) return 0;
     int mips = t->min_filter != GL_NEAREST && t->min_filter != GL_LINEAR;
+    if (t->rendered) { /* drawn through a framebuffer: finish those draws, then copy the image again */
+        fgl_flush(c);
+        fm3d_texture_release(t->tex);
+        t->tex = NULL, t->rendered = 0;
+    }
     if (!t->tex || t->built_mips != mips) {
         fm3d_texture_release(t->tex);
-        t->tex        = fm3d_texture_create(t->level0, mips);
+        if (t->level0) {
+            t->tex = fm3d_texture_create(t->level0, mips);
+        } else {
+            fm_surface* img = fgl_depth_image(t->depth);
+            t->tex          = img ? fm3d_texture_create(img, mips) : NULL;
+            fm_surface_destroy(img);
+        }
         t->built_mips = mips;
+        if (!t->tex) return 0;
     }
     memset(s, 0, sizeof(*s));
     switch (t->min_filter) {

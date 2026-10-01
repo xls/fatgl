@@ -37,6 +37,7 @@ sources = files(
   'src/gl_buffer.c',
   'src/gl_shader.c',
   'src/gl_draw33.c',
+  'src/gl_fbo.c',
   'src/gen/gl_stubs.c',
   'src/gen/gl_procs.c',
 )
@@ -58,7 +59,7 @@ opengl32 = shared_library('opengl32', sources,
 # next to fatgl's opengl32.dll (the build directory) Windows loads fatgl's
 sys_gl = cc.find_library('opengl32')
 gdi = cc.find_library('gdi32')
-foreach ex : ['triangle', 'gears', 'cube33']
+foreach ex : ['triangle', 'gears', 'cube33', 'fbo33', 'blend']
   executable(ex, 'examples/' + ex + '.c',
     c_args : args,
     dependencies : [sys_gl, gdi],

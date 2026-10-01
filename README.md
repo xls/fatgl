@@ -17,9 +17,13 @@ core, 196 ARB / EXT / KHR aliases of promoted functions), as GL loaders
 | | |
 |---|---|
 | WGL | pixel formats (RGBA8, depth 24, stencil 8, double / single buffered), contexts, `WGL_ARB_create_context(_profile)`, `WGL_ARB_pixel_format`, `WGL_EXT_swap_control`, presentation with GDI |
-| GL 1.x fixed function | immediate mode (all primitives except points / lines), client vertex arrays, display lists, matrix stacks, lighting (8 lights, materials, color material), 2D textures (RGB(A), BGR(A), luminance, alpha; mipmaps by fatmap), texenv, depth / alpha test, culling, scissor, polygon offset, common blend functions, `glReadPixels` |
-| GL 2.0 .. 3.3 | GLSL compiled at run time (glslang inside the DLL, GLSL to SPIR-V, run by fatmap's SPIR-V backend), programs, loose uniforms, uniform blocks (`glBindBufferBase` / `glUniformBlockBinding`), samplers on 16 texture units, buffer objects (map, copy), vertex array objects (any attribute type, normalized, integer, instance divisors), `glDrawArrays` / `glDrawElements` with instancing and base vertex, `gl_VertexID` / `gl_InstanceID`, `glGetStringi` |
-| not yet | framebuffer objects, points / lines, geometry shaders, more than one color output, `glBlendFuncSeparate` / `glBlendEquation`, fog, two sided lighting |
+| GL 1.x fixed function | immediate mode (all primitives except points / lines), client vertex arrays, display lists, matrix stacks, lighting (8 lights, materials, color material), 2D textures (RGB(A), BGR(A), luminance, alpha; mipmaps by fatmap), texenv, depth / alpha test, culling, scissor, polygon offset, blending, `glReadPixels` |
+| GL 2.0 .. 3.3 | GLSL compiled at run time (glslang inside the DLL, GLSL to SPIR-V, run by fatmap's SPIR-V backend), programs, loose uniforms, uniform blocks (`glBindBufferBase` / `glUniformBlockBinding`), samplers on 16 texture units, buffer objects (map, copy), vertex array objects (any attribute type, normalized, integer, instance divisors), `glDrawArrays` / `glDrawElements` with instancing and base vertex, `gl_VertexID` / `gl_InstanceID`, `glGetStringi`, framebuffer objects (texture and renderbuffer attachments, depth only passes, `glBlitFramebuffer`), renderbuffers, depth textures, all blend factors and equations (`glBlendFuncSeparate`, `glBlendEquationSeparate`, `glBlendColor`) |
+| not yet | points / lines, geometry shaders, more than one color output, multisampling, per channel color masks, float / integer render targets (stored as 8 bit unorm), shadow samplers, fog, two sided lighting |
+
+Colors are kept the way GL keeps them: straight (not premultiplied) in
+textures and framebuffers, rows bottom up, so render to texture, blending
+and `glReadPixels` need no conversions.
 
 Unimplemented entry points exist (so loaders and applications link) and
 report `GL_INVALID_OPERATION`; set `FATGL_VERBOSE=1` to see them on stderr
@@ -29,10 +33,8 @@ report `GL_INVALID_OPERATION`; set `FATGL_VERBOSE=1` to see them on stderr
 
 * OpenGL 2.1 / 3.3 (core and compatibility profiles): GLSL through glslang
   (vendored with a Meson build) to SPIR-V, run by fatmap's SPIR-V backend;
-  buffer objects, VAOs, FBOs, UBOs. Needs in fatmap: SPIR-V function calls,
-  several uniform blocks, GL blending (`glBlendFunc` / `glBlendEquation` on
-  straight alpha), straight alpha texture formats, more render target
-  formats.
+  buffer objects, VAOs, FBOs, UBOs (done). Next: points and lines,
+  multiple render targets, more render target formats.
 * Not planned: OpenGL 4.x (tessellation and double precision shaders are
   outside fatmap's pipeline); 3.2's geometry shaders come later, if at all.
 
@@ -45,13 +47,15 @@ meson setup build
 ninja -C build
 build\gears.exe          # fatgl's opengl32.dll sits next to it
 build\cube33.exe         # OpenGL 3.3 core profile: VAO, VBO / EBO, GLSL 330, UBO, texture
+build\fbo33.exe          # render to texture: framebuffer object, renderbuffer, blit
+build\blend.exe          # every blend equation, constant color, straight alpha textures
 ```
 
 fatmap comes from its release package (`subprojects/fatmap.wrap`), or with
 `-Dfatmap=source` from a fatmap checkout at `subprojects/fatmap-src` (a
 junction / symlink; fatgl currently needs fatmap features newer than the
 v0.2.0 release: SPIR-V function call inlining, uniform blocks by binding,
-vertex / instance ids). glslang (GLSL to SPIR-V) comes from
+vertex / instance ids, lower left origin, straight color blending). glslang (GLSL to SPIR-V) comes from
 `subprojects/glslang.wrap` with fatgl's own Meson build of it. The examples
 link against the system `opengl32` import library on purpose: Windows
 loads the DLL next to the executable, which is fatgl's.

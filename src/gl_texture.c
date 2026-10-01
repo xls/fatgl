@@ -1,6 +1,6 @@
 /*
- * fatgl - 2D textures. Level 0 is kept as a premultiplied ARGB32 fatmap
- * surface; mipmaps are built by fatmap from it when a mipmap filter is used
+ * fatgl - 2D textures. Level 0 is kept as a straight (not premultiplied)
+ * ARGB32 fatmap surface, like every fatgl color buffer; mipmaps are built by fatmap from it when a mipmap filter is used
  * (images given for levels > 0 are ignored for now).
  */
 #include "fgl.h"
@@ -45,8 +45,12 @@ void APIENTRY glDeleteTextures(GLsizei n, const GLuint* names)
     for (GLsizei i = 0; i < n; i++) {
         fgl_tex* t = names[i] ? fgl_texture(c, names[i], 0) : NULL;
         if (!t) continue;
+        fgl_texture_detach(c, names[i]);
+        fgl_surface_gone(c, t->level0);
+        fgl_surface_gone(c, t->depth);
         fm3d_texture_release(t->tex);
         fm_surface_destroy(t->level0);
+        fm_surface_destroy(t->depth);
         memset(t, 0, sizeof(*t));
         for (int u = 0; u < FGL_UNITS; u++)
             if (c->unit_tex[u] == names[i]) c->unit_tex[u] = 0;
@@ -119,7 +123,7 @@ static void fgl_upload(fgl_ctx* c, fm_surface* s, int x0, int y0, int w, int h, 
         for (int x = 0; x < w; x++) {
             uint8_t t[4];
             fgl_texel(fmt, type, row, x, t);
-            d[x] = fm_premultiply(FM_RGBA(t[0], t[1], t[2], t[3]));
+            d[x] = FM_RGBA(t[0], t[1], t[2], t[3]); /* straight, as GL samples it */
         }
     }
 }
@@ -128,7 +132,6 @@ void APIENTRY glTexImage2D(GLenum target, GLint level, GLint ifmt, GLsizei w, GL
                            const void* pixels)
 {
     FGL_CTX_OR_RETURN(c);
-    (void)ifmt;
     if (target != GL_TEXTURE_2D) {
         fgl_unimplemented("glTexImage2D (targets other than GL_TEXTURE_2D)");
         return;
@@ -137,7 +140,8 @@ void APIENTRY glTexImage2D(GLenum target, GLint level, GLint ifmt, GLsizei w, GL
         fgl_error(GL_INVALID_VALUE);
         return;
     }
-    if (type != GL_UNSIGNED_BYTE && type != GL_FLOAT) {
+    int depth = fmt == GL_DEPTH_COMPONENT || fmt == GL_DEPTH_STENCIL;
+    if (!depth && type != GL_UNSIGNED_BYTE && type != GL_FLOAT) {
         fgl_unimplemented("glTexImage2D (pixel types other than GL_UNSIGNED_BYTE / GL_FLOAT)");
         return;
     }
@@ -148,10 +152,25 @@ void APIENTRY glTexImage2D(GLenum target, GLint level, GLint ifmt, GLsizei w, GL
         return;
     }
     fgl_flush(c);
+    fgl_surface_gone(c, t->level0); /* a framebuffer may draw into it */
+    fgl_surface_gone(c, t->depth);
+    c->tgt_color = NULL;
     fm3d_texture_release(t->tex);
     fm_surface_destroy(t->level0);
-    t->tex    = NULL;
-    t->level0 = w > 0 && h > 0 ? fm_surface_create(w, h, FM_FORMAT_ARGB32) : NULL;
+    fm_surface_destroy(t->depth);
+    t->tex = NULL, t->level0 = t->depth = NULL, t->rendered = 0;
+    if (w <= 0 || h <= 0) return;
+    if (depth) { /* a depth (stencil) texture: a fatmap depth surface */
+        fm_format f = ifmt == GL_DEPTH_COMPONENT16 ? FM_FORMAT_D16
+                      : (ifmt == GL_DEPTH_COMPONENT32F || ifmt == GL_DEPTH_COMPONENT32) ? FM_FORMAT_D32F : FM_FORMAT_D24S8;
+        t->depth = fm_surface_create(w, h, f);
+        if (t->depth && pixels && type == GL_FLOAT && fmt == GL_DEPTH_COMPONENT && f == FM_FORMAT_D32F)
+            for (int y = 0; y < h; y++) memcpy(fm_surface_rowf(t->depth, y), (const float*)pixels + (size_t)y * (size_t)w, (size_t)w * 4);
+        else if (pixels)
+            fgl_unimplemented("glTexImage2D (depth texture data other than GL_FLOAT into GL_DEPTH_COMPONENT32F)");
+        return;
+    }
+    t->level0 = fm_surface_create(w, h, FM_FORMAT_ARGB32);
     if (t->level0 && pixels) fgl_upload(c, t->level0, 0, 0, w, h, fmt, type, pixels);
 }
 

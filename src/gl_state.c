@@ -16,12 +16,16 @@ void fgl_ctx_init(fgl_ctx* c)
         fm3d_set_deferred(c->c3, 1);
     }
     fm3d_set_clip_depth(c->c3, FM3D_DEPTH_NEG_ONE_ONE);
+    fm3d_set_origin(c->c3, FM3D_ORIGIN_LOWER_LEFT); /* GL window coordinates: row 0 at the bottom */
+    fm3d_blend_state off = { FM3D_BF_ONE, FM3D_BF_ZERO, FM3D_BF_ONE, FM3D_BF_ZERO, FM3D_BLEND_ADD, FM3D_BLEND_ADD, 0 };
+    fm3d_set_blend_state(c->c3, &off); /* straight colors everywhere, as GL keeps them */
     c->depth_func   = GL_LESS;
     c->depth_mask   = GL_TRUE;
     c->cull_face    = GL_BACK;
     c->front_face   = GL_CCW;
     c->shade_model  = GL_SMOOTH;
-    c->blend_src    = GL_ONE, c->blend_dst = GL_ZERO;
+    c->blend_src    = c->blend_src_a = GL_ONE, c->blend_dst = c->blend_dst_a = GL_ZERO;
+    c->blend_eq     = c->blend_eq_a = GL_FUNC_ADD;
     c->alpha_func   = GL_ALWAYS;
     c->clear_depth  = 1.0f;
     c->unpack_align = c->pack_align = 4;
@@ -56,7 +60,9 @@ void fgl_ctx_free(fgl_ctx* c)
     for (int i = 0; i < c->ntex; i++) {
         fm3d_texture_release(c->tex[i].tex);
         fm_surface_destroy(c->tex[i].level0);
+        fm_surface_destroy(c->tex[i].depth);
     }
+    fgl_fbo_free(c);
     free(c->tex);
     for (int i = 0; i < c->nlists; i++) free(c->lists[i].ops);
     free(c->lists);
@@ -78,11 +84,12 @@ int fgl_resize(fgl_ctx* c, int w, int h)
         fm_surface_destroy(dep);
         return 0;
     }
+    fm3d_set_target(c->c3, col, dep); /* off the old surfaces (flushes) */
+    fm3d_set_stencil_buffer(c->c3, NULL);
     fm_surface_destroy(c->color);
     fm_surface_destroy(c->depth);
     c->color = col, c->depth = dep, c->fbw = w, c->fbh = h;
-    fm3d_set_target(c->c3, c->color, c->depth);
-    fm3d_set_stencil_buffer(c->c3, c->depth);
+    c->tgt_color = NULL; /* fgl_bind_draw picks the draw framebuffer */
     return 1;
 }
 
@@ -255,7 +262,23 @@ void APIENTRY glBlendFunc(GLenum s, GLenum d)
 {
     FGL_CTX_OR_RETURN(c);
     if (c->list_compiling && fgl_record(c, FGL_OP_BLENDFUNC, s, d, NULL, 0)) return;
-    c->blend_src = s, c->blend_dst = d;
+    c->blend_src = c->blend_src_a = s, c->blend_dst = c->blend_dst_a = d;
+}
+void APIENTRY glBlendFuncSeparate(GLenum s, GLenum d, GLenum sa, GLenum da)
+{
+    FGL_CTX_OR_RETURN(c);
+    c->blend_src = s, c->blend_dst = d, c->blend_src_a = sa, c->blend_dst_a = da;
+}
+void APIENTRY glBlendEquationSeparate(GLenum rgb, GLenum a)
+{
+    FGL_CTX_OR_RETURN(c);
+    c->blend_eq = rgb, c->blend_eq_a = a;
+}
+void APIENTRY glBlendEquation(GLenum e) { glBlendEquationSeparate(e, e); }
+void APIENTRY glBlendColor(GLfloat r, GLfloat g, GLfloat b, GLfloat a)
+{
+    FGL_CTX_OR_RETURN(c);
+    c->blend_color[0] = r, c->blend_color[1] = g, c->blend_color[2] = b, c->blend_color[3] = a;
 }
 void APIENTRY glAlphaFunc(GLenum f, GLfloat ref)
 {
@@ -280,8 +303,6 @@ void APIENTRY glPolygonMode(GLenum face, GLenum mode)
     (void)face;
     if (mode != GL_FILL) fgl_unimplemented("glPolygonMode (GL_LINE / GL_POINT)");
 }
-void APIENTRY glDrawBuffer(GLenum b) { (void)b; }
-void APIENTRY glReadBuffer(GLenum b) { (void)b; }
 
 void APIENTRY glFlush(void)
 {
@@ -295,26 +316,59 @@ void APIENTRY glFinish(void)
 }
 
 /* ---- the fatmap state of the GL state ---- */
-static fm_blend_op fgl_blend_op(fgl_ctx* c)
+/* GL keeps straight colors in its framebuffers and textures: fatmap's
+ * straight color output merger with GL's factors and equations */
+static fm3d_blend_factor fgl_factor(GLenum f)
 {
-    if (!(c->enables & FGL_E_BLEND)) return FM_OP_COPY;
-    GLenum s = c->blend_src, d = c->blend_dst;
-    if (s == GL_SRC_ALPHA && d == GL_ONE_MINUS_SRC_ALPHA) return FM_OP_SRC_OVER;
-    if (s == GL_ONE && d == GL_ONE_MINUS_SRC_ALPHA) return FM_OP_SRC_OVER;
-    if ((s == GL_ONE || s == GL_SRC_ALPHA) && d == GL_ONE) return FM_OP_LIGHTER;
-    if (s == GL_ONE && d == GL_ZERO) return FM_OP_COPY;
-    if (s == GL_DST_COLOR && d == GL_ZERO) return FM_OP_MULTIPLY;
-    fgl_unimplemented("glBlendFunc (this factor pair)");
-    return FM_OP_SRC_OVER;
+    switch (f) {
+    case GL_ZERO: return FM3D_BF_ZERO;
+    case GL_SRC_COLOR: return FM3D_BF_SRC_COLOR;
+    case GL_ONE_MINUS_SRC_COLOR: return FM3D_BF_ONE_MINUS_SRC_COLOR;
+    case GL_DST_COLOR: return FM3D_BF_DST_COLOR;
+    case GL_ONE_MINUS_DST_COLOR: return FM3D_BF_ONE_MINUS_DST_COLOR;
+    case GL_SRC_ALPHA: return FM3D_BF_SRC_ALPHA;
+    case GL_ONE_MINUS_SRC_ALPHA: return FM3D_BF_ONE_MINUS_SRC_ALPHA;
+    case GL_DST_ALPHA: return FM3D_BF_DST_ALPHA;
+    case GL_ONE_MINUS_DST_ALPHA: return FM3D_BF_ONE_MINUS_DST_ALPHA;
+    case GL_CONSTANT_COLOR: return FM3D_BF_CONSTANT_COLOR;
+    case GL_ONE_MINUS_CONSTANT_COLOR: return FM3D_BF_ONE_MINUS_CONSTANT_COLOR;
+    case GL_CONSTANT_ALPHA: return FM3D_BF_CONSTANT_ALPHA;
+    case GL_ONE_MINUS_CONSTANT_ALPHA: return FM3D_BF_ONE_MINUS_CONSTANT_ALPHA;
+    case GL_SRC_ALPHA_SATURATE: return FM3D_BF_SRC_ALPHA_SATURATE;
+    default: return FM3D_BF_ONE;
+    }
+}
+static fm3d_blend_eq fgl_equation(GLenum e)
+{
+    switch (e) {
+    case GL_FUNC_SUBTRACT: return FM3D_BLEND_SUBTRACT;
+    case GL_FUNC_REVERSE_SUBTRACT: return FM3D_BLEND_REVERSE_SUBTRACT;
+    case GL_MIN: return FM3D_BLEND_MIN;
+    case GL_MAX: return FM3D_BLEND_MAX;
+    default: return FM3D_BLEND_ADD;
+    }
+}
+
+static void fgl_sync_blend(fgl_ctx* c)
+{
+    fm3d_blend_state b = { FM3D_BF_ONE, FM3D_BF_ZERO, FM3D_BF_ONE, FM3D_BF_ZERO, FM3D_BLEND_ADD, FM3D_BLEND_ADD, 0 };
+    if (c->enables & FGL_E_BLEND) {
+        b.src_rgb = fgl_factor(c->blend_src), b.dst_rgb = fgl_factor(c->blend_dst);
+        b.src_alpha = fgl_factor(c->blend_src_a), b.dst_alpha = fgl_factor(c->blend_dst_a);
+        b.eq_rgb = fgl_equation(c->blend_eq), b.eq_alpha = fgl_equation(c->blend_eq_a);
+        b.constant = FM_RGBA(fgl_u8(c->blend_color[0]), fgl_u8(c->blend_color[1]), fgl_u8(c->blend_color[2]),
+                             fgl_u8(c->blend_color[3]));
+    }
+    fm3d_set_blend_state(c->c3, &b);
 }
 
 void fgl_sync(fgl_ctx* c)
 {
     fm3d_ctx* f = c->c3;
-    /* GL windows coordinates: origin bottom left; fatmap: top left */
-    fm3d_set_viewport(f, c->viewport[0], c->fbh - (c->viewport[1] + c->viewport[3]), c->viewport[2], c->viewport[3]);
-    fm3d_set_scissor(f, (c->enables & FGL_E_SCISSOR) != 0, c->scissor[0], c->fbh - (c->scissor[1] + c->scissor[3]), c->scissor[2],
-                     c->scissor[3]);
+    fgl_bind_draw(c); /* the draw framebuffer (resets fatmap's viewport + scissor when it changes) */
+    /* GL window coordinates; fatmap counts rows bottom up as well (FM3D_ORIGIN_LOWER_LEFT) */
+    fm3d_set_viewport(f, c->viewport[0], c->viewport[1], c->viewport[2], c->viewport[3]);
+    fm3d_set_scissor(f, (c->enables & FGL_E_SCISSOR) != 0, c->scissor[0], c->scissor[1], c->scissor[2], c->scissor[3]);
     fm3d_set_projection(f, &c->mstack[FGL_PROJ][c->msp[FGL_PROJ]]);
     fm_mat4 id;
     memcpy(&id, g_ident, sizeof(id));
@@ -326,11 +380,12 @@ void fgl_sync(fgl_ctx* c)
     if (c->enables & FGL_E_CULL)
         cull = c->cull_face == GL_FRONT ? FM3D_CULL_FRONT : (c->cull_face == GL_FRONT_AND_BACK ? FM3D_CULL_FRONT_AND_BACK : FM3D_CULL_BACK);
     fm3d_set_cull(f, cull, c->front_face == GL_CW ? FM3D_FRONT_CW : FM3D_FRONT_CCW);
-    fm3d_set_blend(f, fgl_blend_op(c));
+    fgl_sync_blend(c);
     fm3d_set_color_write(f, c->color_mask[0] || c->color_mask[1] || c->color_mask[2] || c->color_mask[3]);
     fm3d_set_alpha_test(f, (c->enables & FGL_E_ALPHA) ? (fm3d_compare)(c->alpha_func - GL_NEVER) : FM3D_ALWAYS, c->alpha_ref);
     if (c->enables & FGL_E_POFFSET) fm3d_set_depth_bias(f, c->poly_factor, c->poly_units);
     else fm3d_set_depth_bias(f, 0, 0);
+    fgl_bind_draw(c); /* again: depth only framebuffers turn color writes off */
 }
 
 /* ---- queries ---- */
@@ -395,7 +450,8 @@ static int fgl_get_count(GLenum p, fgl_ctx* c, double* v)
     case GL_MAX_VARYING_COMPONENTS: case GL_MAX_VERTEX_OUTPUT_COMPONENTS: case GL_MAX_FRAGMENT_INPUT_COMPONENTS:
         v[0] = FM3D_MAX_SHADER_VARYINGS;
         return 1;
-    case GL_MAX_DRAW_BUFFERS: case GL_MAX_COLOR_ATTACHMENTS: v[0] = 1; return 1;
+    case GL_MAX_DRAW_BUFFERS: v[0] = 1; return 1;
+    case GL_MAX_COLOR_ATTACHMENTS: v[0] = FGL_COLOR_ATTACHMENTS; return 1;
     case GL_MAX_RENDERBUFFER_SIZE: v[0] = 8192; return 1;
     case GL_MAX_ELEMENTS_VERTICES: case GL_MAX_ELEMENTS_INDICES: v[0] = 1 << 24; return 1;
     case GL_CURRENT_PROGRAM: v[0] = c->program; return 1;
@@ -404,9 +460,16 @@ static int fgl_get_count(GLenum p, fgl_ctx* c, double* v)
     case GL_ELEMENT_ARRAY_BUFFER_BINDING: v[0] = fgl_cur_vao(c)->elements; return 1;
     case GL_UNIFORM_BUFFER_BINDING: v[0] = c->uniform_buffer; return 1;
     case GL_ACTIVE_TEXTURE: v[0] = GL_TEXTURE0 + c->active_unit; return 1;
-    case GL_DRAW_FRAMEBUFFER_BINDING: case GL_READ_FRAMEBUFFER_BINDING: case GL_RENDERBUFFER_BINDING: v[0] = 0; return 1;
-    case GL_BLEND_SRC_RGB: case GL_BLEND_SRC_ALPHA: v[0] = c->blend_src; return 1;
-    case GL_BLEND_DST_RGB: case GL_BLEND_DST_ALPHA: v[0] = c->blend_dst; return 1;
+    case GL_DRAW_FRAMEBUFFER_BINDING: v[0] = c->draw_fbo; return 1;
+    case GL_READ_FRAMEBUFFER_BINDING: v[0] = c->read_fbo; return 1;
+    case GL_RENDERBUFFER_BINDING: v[0] = c->renderbuffer; return 1;
+    case GL_BLEND_SRC_RGB: v[0] = c->blend_src; return 1;
+    case GL_BLEND_SRC_ALPHA: v[0] = c->blend_src_a; return 1;
+    case GL_BLEND_DST_RGB: v[0] = c->blend_dst; return 1;
+    case GL_BLEND_DST_ALPHA: v[0] = c->blend_dst_a; return 1;
+    case GL_BLEND_EQUATION_RGB: v[0] = c->blend_eq; return 1;
+    case GL_BLEND_EQUATION_ALPHA: v[0] = c->blend_eq_a; return 1;
+    case GL_BLEND_COLOR: for (int i = 0; i < 4; i++) v[i] = c->blend_color[i]; return 4;
     case GL_PACK_ALIGNMENT: v[0] = c->pack_align; return 1;
     case GL_VIEWPORT: for (int i = 0; i < 4; i++) v[i] = c->viewport[i]; return 4;
     case GL_SCISSOR_BOX: for (int i = 0; i < 4; i++) v[i] = c->scissor[i]; return 4;
@@ -491,14 +554,19 @@ void APIENTRY glReadPixels(GLint x, GLint y, GLsizei w, GLsizei h, GLenum fmt, G
         return;
     }
     fgl_flush(c);
+    fm_surface* src = fgl_read_color(c);
+    if (!src) {
+        fgl_error(GL_INVALID_OPERATION);
+        return;
+    }
     int    comps  = fmt == GL_RGBA || fmt == GL_BGRA ? 4 : 3;
     size_t stride = ((size_t)w * (size_t)comps + (size_t)c->pack_align - 1) / (size_t)c->pack_align * (size_t)c->pack_align;
     for (int r = 0; r < h; r++) {
-        int      sy  = c->fbh - 1 - (y + r);
+        int      sy  = y + r; /* rows bottom up, as GL returns them */
         uint8_t* dst = (uint8_t*)out + (size_t)r * stride;
         for (int i = 0; i < w; i++) {
             int      sx = x + i;
-            uint32_t p  = sx >= 0 && sx < c->fbw && sy >= 0 && sy < c->fbh ? fm_surface_get_pixel(c->color, sx, sy) : 0;
+            uint32_t p  = sx >= 0 && sx < src->width && sy >= 0 && sy < src->height ? fm_surface_row32(src, sy)[sx] : 0; /* straight */
             uint8_t  R = (uint8_t)(p >> 16), G = (uint8_t)(p >> 8), B = (uint8_t)p, A = (uint8_t)(p >> 24);
             uint8_t* d = dst + (size_t)i * (size_t)comps;
             if (fmt == GL_RGBA || fmt == GL_RGB) d[0] = R, d[1] = G, d[2] = B;

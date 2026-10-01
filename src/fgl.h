@@ -103,9 +103,11 @@ typedef struct fgl_vtx { /* an immediate mode vertex: object position, current a
 typedef struct fgl_tex {
     GLuint        name;
     int           used;
-    fm_surface*   level0; /* the image of level 0 (premultiplied ARGB32) */
+    fm_surface*   level0; /* the image of level 0 (straight ARGB32) */
+    fm_surface*   depth;  /* depth textures: D32F / D24S8 / D16 instead of level0 */
     fm3d_texture* tex;    /* built on use (mipmaps from level 0) */
     int           built_mips;
+    int           rendered; /* drawn into through a framebuffer since tex was built */
     GLenum        min_filter, mag_filter, wrap_s, wrap_t;
 } fgl_tex;
 
@@ -202,6 +204,29 @@ typedef struct fgl_program {
     int delete_pending;
 } fgl_program;
 
+/* framebuffer objects: one color attachment (fatmap has one color target) */
+typedef struct fgl_rbo {
+    GLuint      name;
+    int         used;
+    GLenum      ifmt;
+    fm_surface* s; /* ARGB32, a depth format or A8 (stencil) */
+} fgl_rbo;
+
+typedef struct fgl_attach {
+    GLenum type; /* GL_NONE, GL_TEXTURE, GL_RENDERBUFFER */
+    GLuint name;
+    GLint  level;
+} fgl_attach;
+
+#define FGL_COLOR_ATTACHMENTS 8 /* accepted; only attachment 0 is drawn */
+typedef struct fgl_fbo {
+    GLuint      name;
+    int         used;
+    fgl_attach  color[FGL_COLOR_ATTACHMENTS], depth, stencil;
+    GLenum      draw_buf[FGL_COLOR_ATTACHMENTS], read_buf;
+    fm_surface* dummy; /* color target of depth only framebuffers */
+} fgl_fbo;
+
 typedef struct fgl_op fgl_op; /* a recorded display list command */
 typedef struct fgl_list {
     GLuint  name;
@@ -214,7 +239,7 @@ typedef struct fgl_ctx {
     HDC          hdc;
     fm3d_ctx*    c3;
     fm_executor* ex;
-    fm_surface*  color; /* back buffer, premultiplied ARGB32 (straight when alpha is 1) */
+    fm_surface*  color; /* back buffer, straight ARGB32 (fm3d_set_blend_state) */
     fm_surface*  depth; /* D24S8 */
     int          fbw, fbh;
     int          made_current; /* the first wglMakeCurrent sets the viewport */
@@ -230,7 +255,9 @@ typedef struct fgl_ctx {
     int      viewport[4], scissor[4];
     GLenum   depth_func, cull_face, front_face, shade_model;
     GLboolean depth_mask, color_mask[4];
-    GLenum   blend_src, blend_dst;
+    GLenum   blend_src, blend_dst, blend_src_a, blend_dst_a; /* glBlendFuncSeparate */
+    GLenum   blend_eq, blend_eq_a;                         /* glBlendEquationSeparate */
+    float    blend_color[4];
     GLenum   alpha_func;
     float    alpha_ref;
     float    poly_factor, poly_units;
@@ -291,6 +318,14 @@ typedef struct fgl_ctx {
         GLintptr   offset;
         GLsizeiptr size; /* 0: the whole buffer */
     } ubo[FGL_UBO_BINDS];
+    fgl_rbo*    rbos;
+    int         nrbos;
+    fgl_fbo*    fbos;
+    int         nfbos;
+    GLuint      draw_fbo, read_fbo, renderbuffer;
+    fm_surface* tgt_color; /* what the fatmap context renders into (NULL: rebind) */
+    fm_surface* tgt_depth;
+    fm_surface* tgt_stencil;
     GLuint unit_tex[FGL_UNITS]; /* GL_TEXTURE_2D binding per texture unit */
     int    active_unit;
     float  attr_value[FGL_ATTRIBS][4]; /* generic attribute values (glVertexAttrib*) */
@@ -330,6 +365,16 @@ fgl_program* fgl_program_get(fgl_ctx* c, GLuint name);
 void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenum itype, const void* indices, GLint basevertex,
                       GLsizei instances);
 fgl_list* fgl_list_get(fgl_ctx* c, GLuint name, int create);
+
+/* framebuffers (gl_fbo.c): point fatmap at the draw framebuffer; surfaces
+ * of the read framebuffer; forget a surface about to be destroyed */
+void        fgl_bind_draw(fgl_ctx* c);
+fm_surface* fgl_read_color(fgl_ctx* c);
+void        fgl_surface_gone(fgl_ctx* c, const fm_surface* s);
+void        fgl_fbo_free(fgl_ctx* c);
+void        fgl_texture_detach(fgl_ctx* c, GLuint name); /* from every framebuffer */
+/* depth value 0..1 of a depth surface */
+float fgl_depth_at(const fm_surface* s, int x, int y);
 
 /* display lists: while compiling, commands are recorded (and executed
  * for GL_COMPILE_AND_EXECUTE) */
