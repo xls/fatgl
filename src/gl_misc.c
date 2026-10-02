@@ -695,7 +695,8 @@ int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
     case GL_PRIMITIVE_RESTART_INDEX: v[0] = c->restart_index; return 1;
     case GL_SAMPLER_BINDING: v[0] = c->unit_sampler[c->active_unit]; return 1;
     case GL_TIMESTAMP: v[0] = (double)fgl_now_ns(); return 1;
-    case GL_MAX_SAMPLES: case GL_MAX_COLOR_TEXTURE_SAMPLES: case GL_MAX_DEPTH_TEXTURE_SAMPLES: case GL_MAX_INTEGER_SAMPLES:
+    case GL_MAX_SAMPLES: v[0] = 8; return 1; /* window MSAA up to 8x (Doom 3 BFG sizes its antialiasing menu by it); multisample renderbuffers are single sampled */
+    case GL_MAX_COLOR_TEXTURE_SAMPLES: case GL_MAX_DEPTH_TEXTURE_SAMPLES: case GL_MAX_INTEGER_SAMPLES:
         v[0] = 1;
         return 1;
     case GL_SAMPLES: v[0] = !c->draw_fbo && c->samples > 1 ? c->samples : 0; return 1;

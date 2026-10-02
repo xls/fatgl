@@ -1284,6 +1284,9 @@ static void test_msaa_window(HDC dc0, HGLRC rc0, HINSTANCE inst)
     glGetIntegerv(0x80A9 /* GL_SAMPLES */, &samples);
     glGetIntegerv(0x80A8 /* GL_SAMPLE_BUFFERS */, &buffers);
     CHECK(samples == 4 && buffers == 1, "GL_SAMPLES %d, GL_SAMPLE_BUFFERS %d", samples, buffers);
+    GLint maxs = 0;
+    glGetIntegerv(0x8D57 /* GL_MAX_SAMPLES */, &maxs);
+    CHECK(maxs == 8, "GL_MAX_SAMPLES %d (Doom 3 BFG offers antialiasing up to it)", maxs);
     glViewport(0, 0, 64, 64);
     ortho();
     glClearColor(0, 0, 0, 1);
