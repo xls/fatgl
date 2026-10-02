@@ -51,6 +51,7 @@ Environment variables:
 | `FATGL_LOG=0` / `FATGL_LOG=<file>` | no `fatgl.log` / write it elsewhere |
 | `FATGL_VERBOSE=1` | also print unimplemented calls on stderr |
 | `FATGL_THREADS=<n>` | render threads (default: every core) |
+| `FATGL_MSAA=0` / `4` / `8` | window anti-aliasing off / 4x / 8x, whatever the pixel format asks |
 | `FATGL_PRECISE_MATH=1` | shader math within 1 ulp instead of GPU-like precision (slower) |
 | `FATGL_DUMP_SPIRV=<dir>` | write every linked program's SPIR-V |
 | `FATGL_LOAD_SPIRV=<dir>` | use such files instead (e.g. after `spirv-opt`) |

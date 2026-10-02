@@ -170,8 +170,14 @@ BOOL WINAPI wglMakeCurrent(HDC hdc, HGLRC rc)
     t_cur = c, t_dc = c ? hdc : NULL;
     if (!c) return TRUE;
     c->hdc = hdc;
-    int fmt = wglGetPixelFormat(hdc), ms = fmt >= 1 && fmt <= FGL_NPF ? g_pf[fmt - 1].samples : 1;
-    if (ms != c->samples) c->samples = ms, c->tgt_color = NULL; /* the window's MSAA: rebound on the next draw */
+    int         fmt = wglGetPixelFormat(hdc), ms = fmt >= 1 && fmt <= FGL_NPF ? g_pf[fmt - 1].samples : 1;
+    const char* fe  = getenv("FATGL_MSAA"); /* 0 / 1: off, 4, 8: forced, whatever the pixel format asks */
+    if (fe && fe[0]) ms = atoi(fe) >= 8 ? 8 : (atoi(fe) >= 2 ? 4 : 1);
+    if (ms != c->samples) {
+        fgl_log("context %p: pixel format %d, %s%s\n", (void*)c, fmt, ms > 1 ? (ms > 4 ? "8x MSAA" : "4x MSAA") : "no MSAA",
+                fe && fe[0] ? " (FATGL_MSAA)" : "");
+        c->samples = ms, c->tgt_color = NULL; /* the window's MSAA: rebound on the next draw */
+    }
     int w, h;
     fgl_client_size(hdc, &w, &h);
     fgl_resize(c, w, h);
