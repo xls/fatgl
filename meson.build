@@ -1,5 +1,5 @@
 project('fatgl', 'c', 'cpp',
-  version : '0.5.0',
+  version : '0.6.0',
   license : 'MIT',
   meson_version : '>=1.3.0',
   default_options : [
@@ -20,7 +20,7 @@ endif
 if get_option('fatmap') == 'source' # a checkout (e.g. a junction / symlink) at subprojects/fatmap-src
   fatmap_dep = subproject('fatmap-src', default_options : ['tests=false', 'sandbox=disabled']).get_variable('fatmap_dep')
 else
-  fatmap_dep = dependency('fatmap', version : '>=0.8.0', fallback : ['fatmap', 'fatmap_dep'])
+  fatmap_dep = dependency('fatmap', version : '>=0.9.1', fallback : ['fatmap', 'fatmap_dep'])
 endif
 # GLSL -> SPIR-V (subprojects/glslang.wrap, our meson.build)
 glslang_dep = dependency('glslang', fallback : ['glslang', 'glslang_dep'])
