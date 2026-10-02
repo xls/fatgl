@@ -756,6 +756,7 @@ void APIENTRY glLinkProgram(GLuint name)
         }
     }
     if (ok) {
+        fm3d_spirv_set_jit(p->sp, fgl_shader_jit()); /* F7 / FATGL_SHADERS */
         p->prog = fm3d_spirv_program(p->sp);
         for (int k = 0; k < 2; k++)
             if (p->defsize[k]) p->def[k] = (uint8_t*)calloc(1, (size_t)p->defsize[k]);

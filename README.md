@@ -51,7 +51,13 @@ Environment variables:
 | `FATGL_LOG=0` / `FATGL_LOG=<file>` | no `fatgl.log` / write it elsewhere |
 | `FATGL_VERBOSE=1` | also print unimplemented calls on stderr |
 | `FATGL_THREADS=<n>` | render threads (default: every core) |
-| `FATGL_MSAA=0` / `4` / `8` | window anti-aliasing off / 4x / 8x, whatever the pixel format asks |
+| `FATGL_MSAA=0` / `4` / `8` | window anti-aliasing off / 4x / 8x, whatever the pixel format asks (start of F8) |
+| `FATGL_SHADERS=jit` / `avx2` / `interp` | shaders on the JIT, the JIT at AVX2, the interpreter (start of F7) |
+| `FATGL_TEXTURES=fast` | trilinear filtering as bilinear from the nearest mip level (start of F6) |
+
+Keys while a window of the application has the focus (swallowed): F10 the
+performance overlay, F8 cycles MSAA (the game's, off, 4x, 8x), F7 the
+shader execution, F6 the texture quality. The modes show for two seconds.
 | `FATGL_PRECISE_MATH=1` | shader math within 1 ulp instead of GPU-like precision (slower) |
 | `FATGL_DUMP_SPIRV=<dir>` | write every linked program's SPIR-V |
 | `FATGL_LOAD_SPIRV=<dir>` | use such files instead (e.g. after `spirv-opt`) |

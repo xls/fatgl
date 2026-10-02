@@ -213,6 +213,7 @@ int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_s
     default: s->filter = FM3D_FILTER_TRILINEAR; break;
     }
     if (mag_filter == GL_NEAREST && min_filter == GL_NEAREST) s->filter = FM3D_FILTER_NEAREST;
+    if (s->filter == FM3D_FILTER_TRILINEAR && fgl_tex_fast()) s->filter = FM3D_FILTER_BILINEAR_MIPMAP; /* F6 */
     s->wrap_u = fgl_wrap(wrap_s), s->wrap_v = fgl_wrap(wrap_t), s->wrap_w = fgl_wrap(wrap_r);
     *tex      = t->tex;
     return 1;

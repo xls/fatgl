@@ -436,7 +436,9 @@ typedef struct fgl_ctx {
     int         nfbos;
     GLuint      draw_fbo, read_fbo, renderbuffer;
     fm_surface* tgt_color; /* what the fatmap context renders into (NULL: rebind) */
-    int         samples;   /* the window's MSAA samples (its pixel format; 1: off) */
+    int         samples;   /* the window's MSAA samples in use (1: off) */
+    int         pf_samples; /* what its pixel format asks for */
+    int         opt_applied; /* the F7 shader mode the programs run in */
     fm_surface* tgt_depth;
     fm_surface* tgt_stencil;
     fgl_sampler* samplers;
@@ -485,6 +487,9 @@ void     fgl_log(const char* fmt, ...); /* fatgl.log (wgl.c) */
 /* a debug output message to the application's glDebugMessageCallback */
 void     fgl_debug(fgl_ctx* c, GLenum source, GLenum type, GLenum severity, const char* msg);
 void     fgl_overlay_frame(fgl_ctx* c); /* overlay.c: F10 performance overlay, at SwapBuffers */
+void     fgl_modes_apply(fgl_ctx* c, int fmt); /* overlay.c: the F7 / F8 modes (MSAA, shader execution) */
+int      fgl_tex_fast(void);                   /* overlay.c: F6, trilinear filtering as bilinear */
+int      fgl_shader_jit(void);                 /* overlay.c: F7, programs on the JIT (else the interpreter) */
 void     fgl_overlay_free(fgl_ctx* c);
 void     fgl_ctx_init(fgl_ctx* c);
 void     fgl_ctx_free(fgl_ctx* c);

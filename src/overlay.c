@@ -7,6 +7,13 @@
  * application never sees F10. FATGL_OVERLAY=1 starts with it on,
  * FATGL_HOTKEY=0 installs no hook.
  *
+ * F8 cycles the window's anti-aliasing (the pixel format's, off, 4x, 8x;
+ * FATGL_MSAA sets the start), F7 the shader execution (JIT at the best
+ * SIMD level, JIT at AVX2, the SPIR-V interpreter) to compare speeds.
+ * F6 trades texture quality for speed (trilinear filtering as bilinear from the
+ * nearest mip level: one level fetched instead of two).
+ * They apply at the next SwapBuffers; a notice shows for two seconds.
+ *
  * At SwapBuffers the overlay is drawn into the back buffer: fatmap's
  * kernel statistics (fm3d_stats deltas: triangles, fragments, tiles, phase
  * times, worker utilization) and fatgl's own counters, averaged over half
@@ -30,9 +37,23 @@
 #endif
 
 static volatile LONG g_overlay = -1; /* -1: not decided yet (FATGL_OVERLAY) */
+static volatile LONG g_msaa_mode = -1; /* F8: 0 the pixel format's, 1 off, 2 4x, 3 8x (-1: FATGL_MSAA decides) */
+static volatile LONG g_opt_mode;       /* F7: 0 JIT, 1 JIT at AVX2, 2 interpreter */
+static volatile LONG g_texq;           /* F6: 1 trilinear filtering as bilinear (nearest mip) */
+static volatile LONG g_notice;         /* a mode changed: show it for a while */
 static HHOOK         g_hook;
 static DWORD         g_hook_tid;
-static int           g_f10_down; /* swallowed the key down: swallow its key up */
+static int           g_down[4]; /* F10 / F8 / F7 / F6: swallowed the key down, swallow its key up */
+
+int fgl_tex_fast(void) { return g_texq != 0; }
+int fgl_shader_jit(void) { return g_opt_mode != 2; }
+
+static void fgl_msaa_mode_init(void)
+{
+    if (g_msaa_mode >= 0) return;
+    const char* e = getenv("FATGL_MSAA"); /* 0 / 1: off, 4, 8 */
+    InterlockedCompareExchange(&g_msaa_mode, !e || !e[0] ? 0 : (atoi(e) >= 8 ? 3 : (atoi(e) >= 2 ? 2 : 1)), -1);
+}
 
 static int fgl_our_foreground(void)
 {
@@ -46,15 +67,22 @@ static LRESULT CALLBACK fgl_kbd(int code, WPARAM wp, LPARAM lp)
 {
     if (code == HC_ACTION) {
         const KBDLLHOOKSTRUCT* k = (const KBDLLHOOKSTRUCT*)lp;
-        if (k->vkCode == VK_F10) {
+        int key = k->vkCode == VK_F10 ? 0 : (k->vkCode == VK_F8 ? 1 : (k->vkCode == VK_F7 ? 2 : (k->vkCode == VK_F6 ? 3 : -1)));
+        if (key >= 0) {
             int down = wp == WM_KEYDOWN || wp == WM_SYSKEYDOWN, up = wp == WM_KEYUP || wp == WM_SYSKEYUP;
             if (down && fgl_our_foreground()) {
-                if (!g_f10_down) InterlockedExchange(&g_overlay, g_overlay > 0 ? 0 : 1); /* not on auto repeat */
-                g_f10_down = 1;
+                if (!g_down[key]) { /* not on auto repeat */
+                    if (key == 0) InterlockedExchange(&g_overlay, g_overlay > 0 ? 0 : 1);
+                    if (key == 1) fgl_msaa_mode_init(), InterlockedExchange(&g_msaa_mode, (g_msaa_mode + 1) % 4);
+                    if (key == 2) InterlockedExchange(&g_opt_mode, (g_opt_mode + 1) % 3);
+                    if (key == 3) InterlockedExchange(&g_texq, !g_texq);
+                    if (key) InterlockedExchange(&g_notice, 1);
+                }
+                g_down[key] = 1;
                 return 1; /* the application does not see it */
             }
-            if (up && g_f10_down) {
-                g_f10_down = 0;
+            if (up && g_down[key]) {
+                g_down[key] = 0;
                 return 1;
             }
         }
@@ -91,6 +119,52 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         PostThreadMessageA(g_hook_tid, WM_QUIT, 0, 0);
     }
     return TRUE;
+}
+
+/* ---- F7 / F8 modes ---- */
+static const char* fgl_msaa_name(int s) { return s >= 8 ? "8x" : (s >= 4 ? "4x" : "off"); }
+
+static void fgl_modes_text(const fgl_ctx* c, char* buf, size_t n)
+{
+    static const char* opt[3] = { "JIT", "JIT at AVX2", "interpreter" };
+    fm_simd_level      lv     = fm_simd_current();
+    snprintf(buf, n, "F6 textures: %s   F7 shaders: %s (%s)   F8 MSAA: %s%s", g_texq ? "bilinear (fast)" : "as asked", opt[g_opt_mode % 3],
+             fm_simd_name(lv), fgl_msaa_name(c->samples), g_msaa_mode == 0 ? " (game)" : "");
+}
+
+/* the modes the keys ask for, at a frame boundary (nothing renders): MSAA rebinds the
+ * window target; the shader mode sets the SIMD level and every program's JIT */
+void fgl_modes_apply(fgl_ctx* c, int fmt)
+{
+    static volatile LONG started;
+    if (!InterlockedExchange(&started, 1)) { /* the start modes: FATGL_SHADERS=jit / avx2 / interp, FATGL_TEXTURES=fast */
+        const char* e = getenv("FATGL_SHADERS");
+        if (e) InterlockedExchange(&g_opt_mode, !strcmp(e, "avx2") ? 1 : (!strcmp(e, "interp") ? 2 : 0));
+        e = getenv("FATGL_TEXTURES");
+        if (e) InterlockedExchange(&g_texq, !strcmp(e, "fast"));
+    }
+    fgl_msaa_mode_init();
+    int m  = (int)g_msaa_mode;
+    int ms = m == 0 ? c->pf_samples : (m == 1 ? 1 : (m == 2 ? 4 : 8));
+    if (ms != c->samples) {
+        fgl_log("context %p: pixel format %d, %s%s\n", (void*)c, fmt, ms > 1 ? (ms > 4 ? "8x MSAA" : "4x MSAA") : "no MSAA",
+                m ? " (F8 / FATGL_MSAA)" : "");
+        c->samples = ms, c->tgt_color = NULL; /* rebound on the next draw */
+    }
+    int o = (int)g_opt_mode;
+    if (o != c->opt_applied && c->c3) {
+        fgl_flush(c);
+        fm_simd_level best = fm_simd_best(), lv = o == 1 && best > FM_SIMD_AVX2 ? FM_SIMD_AVX2 : best;
+        if (fm_simd_current() != lv) fm_simd_set(lv);
+        for (int i = 0; i < c->nprogs; i++) {
+            fgl_program* p = &c->progs[i];
+            if (!p->sp) continue;
+            fm3d_spirv_set_jit(p->sp, o == 2 ? 0 : 1);
+            p->prog = fm3d_spirv_program(p->sp);
+        }
+        c->opt_applied = o;
+        fgl_log("shaders: %s, %s\n", o == 2 ? "interpreter" : "JIT", fm_simd_name(lv));
+    }
 }
 
 /* ---- statistics ---- */
@@ -164,6 +238,9 @@ static void fgl_overlay_report(fgl_ctx* c, fgl_overlay* o, double secs)
     n += snprintf(o->text + n, sizeof(o->text) - (size_t)n, "threads busy %.0f%%\n", util);
     n += snprintf(o->text + n, sizeof(o->text) - (size_t)n, "textures built %.1f   uploaded %.2f MB\n", (double)k->tex_builds / f,
                   (double)k->upload_bytes / f / 1048576.0);
+    char md[160];
+    fgl_modes_text(c, md, sizeof(md));
+    n += snprintf(o->text + n, sizeof(o->text) - (size_t)n, "%s\n", md);
     (void)n;
 }
 
@@ -209,6 +286,20 @@ static void fgl_text(fm_surface* s, int x, int y, int scale, const char* text, u
 
 void fgl_overlay_frame(fgl_ctx* c)
 {
+    static uint64_t notice_until;
+    fgl_modes_apply(c, GetPixelFormat(c->hdc));
+    if (g_notice) {
+        InterlockedExchange(&g_notice, 0);
+        notice_until = fm_time_ns() + 2000000000ull;
+    }
+    if (notice_until && fm_time_ns() < notice_until && g_overlay <= 0) { /* the modes for two seconds, overlay or not */
+        char md[160];
+        fgl_modes_text(c, md, sizeof(md));
+        fm_surface* s     = c->color;
+        int         scale = s->height >= 1000 ? 2 : 1;
+        fgl_rect(s, 8, 8, 8 + stb_easy_font_width(md) * scale + 16 * scale, 8 + 24 * scale, 0, 1);
+        fgl_text(s, 8 + 8 * scale, 8 + 6 * scale, scale, md, 0xFFE8E8E8u);
+    }
     if (g_overlay < 0) {
         const char* e = getenv("FATGL_OVERLAY");
         InterlockedExchange(&g_overlay, e && strcmp(e, "0") ? 1 : 0);
