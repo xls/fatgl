@@ -1,16 +1,50 @@
+<div align="center">
+
 # fatgl
 
-An OpenGL implementation for Windows on top of the
-[fatmap](https://github.com/xls/fatmap) software rasterizer, built as a
-drop in `opengl32.dll`.
+### OpenGL 3.3 without a GPU.
 
-Put fatgl's `opengl32.dll` next to an application's `.exe` and the
-application renders through fatmap: no relinking, no driver. It exports
-the same 336 OpenGL 1.1 functions and WGL functions as the system DLL
-(gdi32's `ChoosePixelFormat` / `SetPixelFormat` / `SwapBuffers` route into
-it), and everything newer comes through `wglGetProcAddress` (GL 1.2 .. 3.3
-core plus the compatibility profile functions such as `glMultiTexCoord*`, and the ARB / EXT / KHR aliases of promoted functions), as GL loaders
-(GLEW, glad, GLFW) expect.
+A drop in `opengl32.dll` for Windows that renders everything on the CPU,<br>
+with [fatmap](https://github.com/xls/fatmap) underneath and GLSL JIT compiled to AVX2 / AVX-512.
+
+**Windows** &nbsp; | &nbsp; **x64 + x86 (32 bit)** &nbsp; | &nbsp; **GL 1.1 .. 3.3, core + compatibility** &nbsp; | &nbsp; **MIT licensed**
+
+[Try it](#try-it-in-a-minute) &nbsp; / &nbsp; [What works](#status) &nbsp; / &nbsp; [Performance](#performance) &nbsp; / &nbsp; [Building](#building) &nbsp; / &nbsp; [fatmap](https://github.com/xls/fatmap)
+
+</div>
+
+![Doom 3 BFG Edition rendered by fatgl on the CPU: GLSL interaction shaders, shadows and HUD](docs/doom3bfg.jpg)
+
+<p align="center"><sub>Doom 3 BFG Edition, unmodified, rendering through fatgl on the CPU.</sub></p>
+
+No relinking, no driver, no GPU. Put fatgl's `opengl32.dll` next to an
+application's `.exe` and Windows loads it instead of the system one: the
+application renders through fatmap's multithreaded, SIMD software
+pipeline. Fixed function GL 1.x, immediate mode and display lists, GLSL
+1.10 to 3.30, FBOs, UBOs, VAOs, MSAA: it runs **Doom 3 BFG Edition** with
+its shaders, shadow volumes, render to texture and Bink videos.
+
+Handy for headless CI, virtual machines and remote desktops without a
+usable GL driver, old games on new machines, and as a readable reference
+implementation when a GPU driver disagrees with you.
+
+## Try it in a minute
+
+1. Build it (see [Building](#building)), or take `opengl32.dll` from a build.
+2. Copy `opengl32.dll` next to the application's `.exe` (a 32 bit
+   application needs the 32 bit DLL).
+3. Run the application. `fatgl.log` appears next to the `.exe`, and
+   `GL_RENDERER` reads "fatgl on fatmap ...". Press **F10** for the
+   performance overlay.
+
+## How it works
+
+fatgl exports the same 336 OpenGL 1.1 functions and WGL functions as the
+system DLL (gdi32's `ChoosePixelFormat` / `SetPixelFormat` / `SwapBuffers`
+route into it), and everything newer comes through `wglGetProcAddress`
+(GL 1.2 .. 3.3 core plus the compatibility profile functions such as
+`glMultiTexCoord*`, and the ARB / EXT / KHR aliases of promoted functions),
+as GL loaders (GLEW, glad, GLFW) expect.
 
 ## Status
 
@@ -53,14 +87,14 @@ Environment variables:
 | `FATGL_MSAA=0` / `4` / `8` | window anti-aliasing off / 4x / 8x, whatever the pixel format asks (start of F8) |
 | `FATGL_SHADERS=jit` / `avx2` / `interp` | shaders on the JIT, the JIT at AVX2, the interpreter (start of F7) |
 | `FATGL_TEXTURES=fast` | trilinear filtering as bilinear from the nearest mip level (start of F6) |
-
-Keys while a window of the application has the focus (swallowed): F10 the
-performance overlay, F8 cycles MSAA (the game's, off, 4x, 8x), F7 the
-shader execution, F6 the texture quality. The modes show for two seconds.
 | `FATGL_PRECISE_MATH=1` | shader math within 1 ulp instead of GPU-like precision (slower) |
 | `FATGL_DUMP_SPIRV=<dir>` | write every linked program's SPIR-V |
 | `FATGL_LOAD_SPIRV=<dir>` | use such files instead (e.g. after `spirv-opt`) |
 | `FM_JIT=0` | fatmap: run shaders on the interpreter instead of the JIT |
+
+Keys while a window of the application has the focus (swallowed): F10 the
+performance overlay, F8 cycles MSAA (the game's, off, 4x, 8x), F7 the
+shader execution, F6 the texture quality. The modes show for two seconds.
 
 ## Performance
 
