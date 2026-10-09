@@ -105,11 +105,13 @@ Mesa llvmpipe through `bench_interaction.py`. Frame times on a Ryzen 9
 
 | | 1 thread | 32 threads |
 |---|---|---|
-| fatgl, x64 | 366 ms | 27.9 ms |
-| fatgl, x86 (32 bit) | 479 ms | 31.6 ms |
+| fatgl, x64 | 145 ms | 8.3 ms |
+| fatgl, x86 (32 bit) | 197 ms | 11.9 ms |
 | Mesa llvmpipe 25.0 (LLVM 19, Linux x64) | 133 ms | 11.0 ms |
 
-Closing that gap is ongoing work (fatmap `docs/BACKLOG.md`).
+The shaders run through fatmap's SPIR-V JIT (AVX-512 here). One thread is
+pinned to one CCD; 32 threads are unpinned. On pure math shaders (Seascape)
+llvmpipe is still about 2x ahead: see fatmap's README.
 
 ### Plan
 
