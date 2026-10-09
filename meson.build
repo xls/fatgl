@@ -83,6 +83,18 @@ executable('bench_interaction', 'tools/bench/bench_interaction.c',
   dependencies : [sys_gl, gdi, cc.find_library('user32')],
   link_args : static_rt)
 
+# a Doom 3 BFG style frame (shadow volumes, render to texture, screen copy), every fatgl
+# mode compared by tools/scene/run.py: the game paths tested without the game
+scene_exe = executable('scene', 'tools/scene/scene.c',
+  c_args : args,
+  dependencies : [sys_gl, gdi, cc.find_library('user32'), cc.find_library('m', required : false)],
+  link_args : static_rt)
+py = find_program('python3', 'python', required : false)
+if py.found()
+  test('scene', py, args : [meson.current_source_dir() / 'tools/scene/run.py', '--build', meson.current_build_dir(), '--frames', '2'],
+    depends : [scene_exe, opengl32], timeout : 600, is_parallel : false)
+endif
+
 # dev tool: what fatmap accepts of glslang's output for GL GLSL
 executable('glsl_probe', 'tools/glsl_probe.c',
   dependencies : [fatmap_dep, glslang_dep],

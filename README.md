@@ -150,6 +150,17 @@ glslang (GLSL to SPIR-V) comes from
 link against the system `opengl32` import library on purpose: Windows
 loads the DLL next to the executable, which is fatgl's.
 
+`tools/scene`: a Doom 3 BFG style frame without the game (BFG's interaction
+shaders, a depth prepass, per light stencil shadow volumes with color writes
+masked and an alpha masked additive light pass, a destination alpha blend
+light, a render to texture monitor, a screen copy heat haze).
+`python tools/scene/run.py [--build build-dev]` renders it in every mode
+(JIT, interpreter, AVX2, SSE2, one thread: the same bits; 4x / 8x MSAA and
+fast textures: close to them), checks the image hashes in
+`tools/scene/golden.txt` (`--update` after an intended change), prints the
+frame times and writes the images to `<build>/scene_out`. `meson test` runs
+it.
+
 `examples/*.exe --shot file.bmp` renders 30 frames, saves the last one and
 quits.
 

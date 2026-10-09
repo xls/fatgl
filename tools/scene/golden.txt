@@ -1,0 +1,9 @@
+# tools/scene image hashes per mode (python tools/scene/run.py --update)
+jit ed6c0f772a0ace0c
+interpreter ed6c0f772a0ace0c
+avx2 ed6c0f772a0ace0c
+sse2 ed6c0f772a0ace0c
+1thread ed6c0f772a0ace0c
+msaa4 ddff21248a128195
+msaa8 b8c22373209ec881
+fast_textures 8fbdbf8d1fb8201a
