@@ -163,6 +163,21 @@ fast textures: close to them), checks the image hashes in
 frame times and writes the images to `<build>/scene_out`. `meson test` runs
 it.
 
+`tools/bfgscene`: real Doom 3 BFG frames for tuning, baked from the game's
+own assets (needs an install; no game run). `bake.py` reads the
+`.resources` files (the binary map, models, materials, images, the game's
+GLSL) and does the frontend's work for one camera: portal visibility, lights
+and their scissors, interactions, prelight and entity shadow volumes, material
+expressions. It records the GL work the way BFG's backend issues it (depth
+fill, per light stencil shadows and interactions, ambient stages); `bfgscene`
+replays that command stream. `tools/bfgscene/scenes.txt` lists the frames
+(Underground Garage, Alpha Labs 1, Hell); `python tools/bfgscene/run.py
+[--game <dir>] [--sections]` bakes them once into `<build>/bfgscenes` (git
+ignored: they hold id's textures), then times each in every mode, checks that
+the exact modes agree and compares against the local `golden.txt` (`--update`).
+`bfgscene <file> --show` opens a window (the F6 to F10 keys work). Not baked
+yet: GUIs, particles, animated models, fog / blend lights, post process.
+
 `examples/*.exe --shot file.bmp` renders 30 frames, saves the last one and
 quits.
 

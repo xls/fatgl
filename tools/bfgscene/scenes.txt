@@ -1,0 +1,5 @@
+# Doom 3 BFG frames for tools/bfgscene/run.py: name map  x y z  yaw pitch  time
+# (positions are game units, the eye; getviewpos in the game console prints them)
+garage     mc_underground  -560 -1232 -60    0 0  10
+alphalabs  alphalabs1      -668   800 164   90 0  10
+hell       hell1          -9808  -488 -2722 90 0  10
