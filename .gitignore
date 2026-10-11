@@ -6,3 +6,4 @@
 /probe_*.spv
 /dist/
 tools/bench/*.ppm
+__pycache__/
