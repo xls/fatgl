@@ -9,18 +9,35 @@
  * (a glFinish between them). --prof prints fatgl's statistics and fatmap's
  * profiler zones; --sample writes instruction pointer samples of the timed
  * frames (tools/bfgscene/profile.py). --show opens the window and renders until it is
- * closed (fatgl's F6 / F7 / F8 / F10 keys work there). */
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <GL/gl.h>
+ * closed (fatgl's F6 / F7 / F8 / F10 keys work there).
+ * Linux: an EGL surfaceless context into a framebuffer object (Mesa's llvmpipe
+ * replays the same scenes: tools/bfgscene/llvmpipe.py); --sample and --show are
+ * Windows only. */
+#ifdef _WIN32
+#  define WIN32_LEAN_AND_MEAN
+#  include <windows.h>
+#  include <GL/gl.h>
+#  define GETPROC(n) (void*)wglGetProcAddress(n)
+#else
+#  include <EGL/egl.h>
+#  include <GL/gl.h>
+#  include <time.h>
+#  define GETPROC(n) (void*)eglGetProcAddress(n)
+#  ifndef APIENTRY
+#    define APIENTRY
+#  endif
+#  define WINAPI
+#endif
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
 typedef char      GLchar;
 typedef ptrdiff_t GLsizeiptr;
+#endif
 #define GLP(ret, name, args) typedef ret(APIENTRY* T_##name) args; static T_##name name##_;
 GLP(GLuint, glCreateShader, (GLenum))
 GLP(void, glShaderSource, (GLuint, GLsizei, const GLchar* const*, const GLint*))
@@ -50,7 +67,7 @@ GLP(void, glBindVertexArray, (GLuint))
 GLP(void, glStencilOpSeparate, (GLenum, GLenum, GLenum, GLenum))
 GLP(void, glDrawElementsBaseVertex, (GLenum, GLsizei, GLenum, const void*, GLint))
 GLP(void, glDepthBoundsEXT, (GLdouble, GLdouble))
-#define LD(n) n##_ = (T_##n)(void*)wglGetProcAddress(#n)
+#define LD(n) n##_ = (T_##n)GETPROC(#n)
 
 #define GL_TEXTURE0_          0x84C0
 #define GL_ARRAY_BUF          0x8892
@@ -85,6 +102,7 @@ static uint8_t* g_file;
 static size_t   g_size;
 static size_t   g_at;
 static int      g_w, g_h;
+static int      g_no_aniso; /* --no-aniso: like for like with renderers without anisotropic filtering (fatgl) */
 static tex*     g_tex;
 static prog*    g_prog;
 static uint32_t g_ntex, g_nprog;
@@ -250,6 +268,21 @@ static void load_programs(void)
             memcpy(src[k], g_file + g_at, len[k]);
             src[k][len[k]] = 0;
             g_at += len[k];
+#ifndef _WIN32
+            /* BFG redeclares built ins ("out vec4 gl_Position;", gl_FragColor): NVIDIA's
+             * and fatgl's compilers take it, Mesa's does not */
+            for (char* q; (q = strstr(src[k], "out vec4 gl_")) != NULL;) {
+                char* e = strchr(q, ';');
+                memset(q, ' ', (size_t)(e ? e + 1 - q : 12));
+            }
+            /* and writes compatibility built ins (gl_FrontColor) under #version 150 */
+            if (!strncmp(src[k], "#version 150", 12) && (src[k][12] == '\n' || src[k][12] == '\r')) {
+                char* n = (char*)malloc(len[k] + 32);
+                snprintf(n, len[k] + 32, "#version 150 compatibility%s", src[k] + 12);
+                free(src[k]);
+                src[k] = n;
+            }
+#endif
         }
         GLuint p = glCreateProgram_();
         glAttachShader_(p, shader(0x8B31, src[0], "vertex"));
@@ -318,7 +351,7 @@ static void load_textures(void)
         for (int k = 0; k < 4; k++) glTexParameteri(target, GL_SWIZZLE_R + (GLenum)k, swz[k]);
         glTexParameterf(target, GL_TEXTURE_MIN_FILTER, (GLfloat)minf);
         glTexParameterf(target, GL_TEXTURE_MAG_FILTER, (GLfloat)magf);
-        glTexParameterf(target, GL_MAX_ANISOTROPY_, aniso);
+        if (!g_no_aniso) glTexParameterf(target, GL_MAX_ANISOTROPY_, aniso);
         glTexParameterf(target, GL_TEXTURE_LOD_BIAS_, lodbias);
         if (wrap == 0x812D) glTexParameterfv(target, GL_TEXTURE_BORDER_, border);
         glTexParameterf(target, GL_TEXTURE_WRAP_S, (GLfloat)wrap);
@@ -334,15 +367,22 @@ static double g_qpf;
 
 static double now_ms(void)
 {
+#ifdef _WIN32
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
     return (double)t.QuadPart * 1000.0 / g_qpf;
+#else
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (double)t.tv_sec * 1000.0 + (double)t.tv_nsec / 1e6;
+#endif
 }
 
 /* ---- --sample <file>: a sampling profiler. A thread stops every other
  * thread every quarter millisecond and records its instruction pointer; the
  * file lists module relative addresses (tools/bfgscene/profile.py names
  * them: fatgl's functions, JIT code, waits; " M": the main thread's) ---- */
+#ifdef _WIN32
 #include <mmsystem.h>
 #include <tlhelp32.h>
 #define MAX_SAMPLES (1 << 22)
@@ -421,6 +461,7 @@ static void sample_write(const char* path)
     fclose(f);
     printf("%ld samples in %s\n", (long)n, path);
 }
+#endif
 
 #define NSECT 8
 static const char* g_sect_name[NSECT];
@@ -574,11 +615,13 @@ static void frame(int sections)
     }
 }
 
+#ifdef _WIN32
 static LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp)
 {
     if (m == WM_CLOSE) PostQuitMessage(0);
     return DefWindowProcA(w, m, wp, lp);
 }
+#endif
 
 static int cmpd(const void* a, const void* b)
 {
@@ -597,6 +640,8 @@ int main(int argc, char** argv)
             sections = 1;
         else if (!strcmp(argv[i], "--prof"))
             prof = 1;
+        else if (!strcmp(argv[i], "--no-aniso"))
+            g_no_aniso = 1;
         else if (!strcmp(argv[i], "--sample") && i + 1 < argc)
             sample = argv[++i];
         else if (!strcmp(argv[i], "--show"))
@@ -636,6 +681,7 @@ int main(int argc, char** argv)
     g_w = (int)rd32(), g_h = (int)rd32();
     g_ntex = rd32(), g_nprog = rd32(), g_ncmds = rd32();
 
+#ifdef _WIN32
     LARGE_INTEGER fq;
     QueryPerformanceFrequency(&fq);
     g_qpf = (double)fq.QuadPart;
@@ -654,7 +700,45 @@ int main(int argc, char** argv)
     SetPixelFormat(dc, ChoosePixelFormat(dc, &pfd), &pfd);
     HGLRC rc = wglCreateContext(dc);
     wglMakeCurrent(dc, rc);
+#else
+    /* EGL surfaceless (EGL_PLATFORM=surfaceless): a compatibility context, the frame in an FBO */
+    EGLDisplay ed = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (!eglInitialize(ed, NULL, NULL) || !eglBindAPI(EGL_OPENGL_API)) {
+        printf("EGL: no display (EGL_PLATFORM=surfaceless?)\n");
+        return 1;
+    }
+    EGLint    ca[] = { EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT, EGL_NONE };
+    EGLConfig cfg;
+    EGLint    ncfg = 0;
+    eglChooseConfig(ed, ca, &cfg, 1, &ncfg);
+    EGLContext ec = eglCreateContext(ed, ncfg ? cfg : NULL, EGL_NO_CONTEXT, NULL);
+    if (ec == EGL_NO_CONTEXT || !eglMakeCurrent(ed, EGL_NO_SURFACE, EGL_NO_SURFACE, ec)) {
+        printf("EGL: no context\n");
+        return 1;
+    }
+    {
+        typedef void(APIENTRY * T_gen)(GLsizei, GLuint*);
+        typedef void(APIENTRY * T_bind)(GLenum, GLuint);
+        typedef void(APIENTRY * T_store)(GLenum, GLenum, GLsizei, GLsizei);
+        typedef void(APIENTRY * T_attach)(GLenum, GLenum, GLenum, GLuint);
+        T_gen    gen_fb = (T_gen)GETPROC("glGenFramebuffers"), gen_rb = (T_gen)GETPROC("glGenRenderbuffers");
+        T_bind   bind_fb = (T_bind)GETPROC("glBindFramebuffer"), bind_rb = (T_bind)GETPROC("glBindRenderbuffer");
+        T_store  store = (T_store)GETPROC("glRenderbufferStorage");
+        T_attach attach = (T_attach)GETPROC("glFramebufferRenderbuffer");
+        GLuint   fb, rb[2];
+        gen_fb(1, &fb), gen_rb(2, rb);
+        bind_fb(0x8D40 /* GL_FRAMEBUFFER */, fb);
+        bind_rb(0x8D41 /* GL_RENDERBUFFER */, rb[0]);
+        store(0x8D41, 0x8058 /* GL_RGBA8 */, g_w, g_h);
+        attach(0x8D40, 0x8CE0 /* GL_COLOR_ATTACHMENT0 */, 0x8D41, rb[0]);
+        bind_rb(0x8D41, rb[1]);
+        store(0x8D41, 0x88F0 /* GL_DEPTH24_STENCIL8 */, g_w, g_h);
+        attach(0x8D40, 0x821A /* GL_DEPTH_STENCIL_ATTACHMENT */, 0x8D41, rb[1]);
+        glViewport(0, 0, g_w, g_h);
+    }
+#endif
     printf("renderer: %s\n", (const char*)glGetString(GL_RENDERER));
+    printf("version: %s\n", (const char*)glGetString(GL_VERSION));
     LD(glCreateShader), LD(glShaderSource), LD(glCompileShader), LD(glGetShaderiv), LD(glGetShaderInfoLog), LD(glCreateProgram);
     LD(glAttachShader), LD(glBindAttribLocation), LD(glLinkProgram), LD(glGetProgramiv), LD(glGetProgramInfoLog), LD(glUseProgram);
     LD(glGetUniformLocation), LD(glUniform4fv), LD(glUniform1i), LD(glGenBuffers), LD(glBindBuffer), LD(glBufferData);
@@ -683,6 +767,7 @@ int main(int argc, char** argv)
     }
     printf("loaded %u textures, %u programs, %.1f MB of geometry in %.0f ms\n", g_ntex, g_nprog, (nvb + nib) / 1e6, now_ms() - tl);
 
+#ifdef _WIN32
     if (show) {
         ShowWindow(win, SW_SHOW);
         double last = now_ms(), acc = 0;
@@ -708,11 +793,18 @@ int main(int argc, char** argv)
         }
     }
 
+#endif
+
     /* --prof: fatgl's statistics and fatmap's profiler zones over the timed frames */
     typedef int(WINAPI * report_fn)(char*, int, int);
-    report_fn report = prof ? (report_fn)(void*)wglGetProcAddress("fglReportFATGL") : NULL;
+    report_fn report = prof ? (report_fn)GETPROC("fglReportFATGL") : NULL;
     if (prof && !report) printf("--prof: not fatgl's opengl32.dll\n");
-    HANDLE  hs = NULL;
+#ifdef _WIN32
+    HANDLE hs = NULL;
+#else
+    if (sample) printf("--sample: Windows only\n");
+    (void)show;
+#endif
     double* ms = (double*)malloc(sizeof(double) * (size_t)(frames > 0 ? frames : 1));
     double* issue = (double*)malloc(sizeof(double) * (size_t)(frames > 0 ? frames : 1)); /* in the GL calls (fatgl: recording) */
     for (int i = 0; i < frames + 1; i++) { /* frame 0 warms up (JIT compiles, texture caches) */
@@ -722,6 +814,7 @@ int main(int argc, char** argv)
         glFinish();
         if (i > 0) ms[i - 1] = now_ms() - t, issue[i - 1] = ti - t;
         if (i == 0 && report) report(NULL, 0, 0);
+#ifdef _WIN32
         if (i == 0 && sample) {
             g_samples  = (uint64_t*)malloc(sizeof(uint64_t) * MAX_SAMPLES);
             g_on_main  = (uint8_t*)malloc(MAX_SAMPLES);
@@ -729,12 +822,15 @@ int main(int argc, char** argv)
             hs         = CreateThread(NULL, 0, sampler, (void*)(uintptr_t)GetCurrentThreadId(), 0, NULL);
             SetThreadPriority(hs, THREAD_PRIORITY_TIME_CRITICAL);
         }
+#endif
     }
+#ifdef _WIN32
     if (hs) {
         g_sampling = 0;
         WaitForSingleObject(hs, INFINITE);
         sample_write(sample);
     }
+#endif
     static char rep[65536];
     if (report) report(rep, sizeof(rep), frames);
     if (sections) {

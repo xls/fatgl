@@ -113,6 +113,23 @@ The shaders run through fatmap's SPIR-V JIT (AVX-512 here). One thread is
 pinned to one CCD; 32 threads are unpinned. On pure math shaders (Seascape)
 llvmpipe is still about 2x ahead: see fatmap's README.
 
+Whole Doom 3 BFG frames (`tools/bfgscene`, baked from the game's assets:
+depth pass, stencil shadow volumes, light interactions, ambient stages;
+1280 x 720), best of several runs. `tools/bfgscene/llvmpipe.py` replays the
+same scene files on llvmpipe (the images agree within about one level on
+average); without anisotropic filtering, which fatgl does not do yet:
+
+| scene | fatgl 1 thread | llvmpipe 1 thread | fatgl 32 threads | llvmpipe 32 threads |
+|---|---|---|---|---|
+| Underground Garage | 181 ms | 367 ms | 15.3 ms | 45.9 ms |
+| Alpha Labs 1 | 73 ms | 138 ms | 7.9 ms | 25.6 ms |
+| Hell | 130 ms | 286 ms | 9.1 ms | 26.4 ms |
+
+The shadow volumes are most of the difference: fatmap skips the batches and
+tiles whose stored depth already decides them (hierarchical z per 8 x 8
+pixels, also for stencil draws and the depth bounds test BFG uses), and fatgl
+caches converted vertex streams of static buffers across frames.
+
 ### Plan
 
 * OpenGL 2.1 / 3.3 (core and compatibility profiles): GLSL through glslang
@@ -180,7 +197,9 @@ the exact modes agree and compares against the local `golden.txt` (`--update`).
 (fragments in / shaded, hierarchical z rejects, phase times, worker
 utilization); `--sample s.txt` records instruction pointers of the timed frames
 and `python tools/bfgscene/profile.py s.txt [--fn <function>]` lists the hot
-functions (and a function's hot instructions). Not baked yet: GUIs,
+functions (and a function's hot instructions). `python
+tools/bfgscene/llvmpipe.py [--no-aniso]` replays the scenes on Mesa's llvmpipe
+in a Linux container (Docker; bfgscene builds for Linux with EGL). Not baked yet: GUIs,
 particles, animated models, fog / blend lights, post process.
 
 `examples/*.exe --shot file.bmp` renders 30 frames, saves the last one and
