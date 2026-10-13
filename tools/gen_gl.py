@@ -52,6 +52,8 @@ EXTRA_CORE = [
     "glProgramLocalParameter4dvARB", "glProgramEnvParameters4fvEXT", "glProgramLocalParameters4fvEXT",
     "glGetProgramEnvParameterfvARB", "glGetProgramEnvParameterdvARB", "glGetProgramLocalParameterfvARB",
     "glGetProgramLocalParameterdvARB", "glGetProgramivARB", "glGetProgramStringARB",
+    # EXT_depth_bounds_test (Doom 3 BFG bounds its shadow volumes and light passes with it)
+    "glDepthBoundsEXT",
 ]
 # names applications ask for that no header declares (drivers export them)
 EXTRA_ALIASES = {

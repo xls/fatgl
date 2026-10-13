@@ -233,6 +233,17 @@ def clip_rect(clip):
     return r
 
 
+def clip_zrange(clip):
+    """window depth range [zmin, zmax] of the clip space points' hull clipped to the near plane
+    (ProjectedNearClippedBounds' z: the near plane is depth 0)"""
+    zs = [(c[2] / c[3]) * 0.5 + 0.5 for c in clip if c[2] > -c[3] + 1e-6]
+    if not zs:
+        return None
+    if len(zs) != len(clip):
+        zs.append(0.0)
+    return max(0.0, min(zs)), min(1.0, max(zs))
+
+
 def rect_and(a, b):
     if a is None or b is None:
         return None
@@ -506,7 +517,7 @@ class Programs:
 # ---------------------------------------------------------------- the command stream
 
 OP_STATE, OP_CULL, OP_POLYOFS, OP_SCISSOR, OP_CLEAR, OP_PROGRAM, OP_VA, OP_FA, OP_TEX, OP_STENCILSEP, OP_DRAW, \
-    OP_COPYFB, OP_VIEWPORT, OP_MARK = range(1, 15)
+    OP_COPYFB, OP_VIEWPORT, OP_MARK, OP_DBOUNDS = range(1, 16)
 LAYOUT_DRAWVERT, LAYOUT_SHADOWVERT = 0, 1
 
 
@@ -524,6 +535,7 @@ class Backend:
         self.tex = {}
         self.scissor = None
         self.ofs = (0.0, 0.0)
+        self.dbounds = (0.0, 0.0)
         self.counts = {'draws': 0, 'tris': 0}
 
     def op(self, code, fmt='', *vals):
@@ -550,6 +562,12 @@ class Backend:
         if (scale, bias) != self.ofs:
             self.op(OP_POLYOFS, 'ff', scale, bias)
             self.ofs = (scale, bias)
+
+    def depth_bounds(self, zmin, zmax):
+        """GL_DepthBoundsTest: 0, 0 disables (r_useLightDepthBounds 1)"""
+        if (zmin, zmax) != self.dbounds and zmin <= zmax:
+            self.op(OP_DBOUNDS, 'ff', zmin, zmax)
+            self.dbounds = (zmin, zmax)
 
     def gl_scissor(self, r):
         if r != self.scissor:
@@ -915,6 +933,9 @@ class Bake:
             scissor = rect_and(arect, lrect)
             if scissor is None:
                 continue
+            zrange = clip_zrange([mvec(v.mvp_world, list(c) + [1.0]) for c in corners])
+            if zrange is None or zrange[0] >= zrange[1]:
+                continue
             spectrum = lmat.spectrum
             inter, trans = [], []
             for s in surfs:
@@ -966,6 +987,7 @@ class Bake:
                             vo, io, n = sh
                             shadows.append({'space': sp, 'vo': vo, 'io': io, 'n': n, 'zfail': zfail})
             out.append({'ent': e, 'mat': lmat, 'parms': parms, 'lproj': lproj, 'origin': gorigin, 'scissor': scissor,
+                        'zrange': zrange,
                         'falloff': falloff_key, 'inter': inter, 'trans': trans, 'shadows': shadows, 'point': point,
                         'inv_base': inv_base})
         return out
@@ -1038,6 +1060,7 @@ class Bake:
         be.gl_state(0)
         for i in range(5):
             be.bind(i, -1)
+        be.depth_bounds(0.0, 0.0)
 
         # ---- RB_DrawShaderPasses (ambient stages), up to post process
         be.mark('shader passes')
@@ -1124,6 +1147,8 @@ class Bake:
         lmat = L['mat']
         lenv = self.env(L['parms'])
         sc = L['scissor']
+        if not self.args.no_depth_bounds:
+            be.depth_bounds(*L['zrange'])  # the light's depth range for its shadows and interactions
         perform_stencil = bool(L['shadows'])
         if perform_stencil:
             # RB_DrawInteractions without stencil select: clear whole 16 pixel tiles to 128
@@ -1161,6 +1186,7 @@ class Bake:
             be.gl_cull(CT_FRONT_SIDED)
         self.render_interactions(L, L['inter'], GLS_DEPTHFUNC_EQUAL, perform_stencil, p_inter, p_inter_amb, lenv)
         if L['trans']:
+            be.depth_bounds(0.0, 0.0)  # translucent surfaces did not write depth
             self.render_interactions(L, L['trans'], GLS_DEPTHFUNC_LESS, False, p_inter, p_inter_amb, lenv)
 
     def render_interactions(self, L, slist, depth_func, stencil, p_inter, p_inter_amb, lenv):
@@ -1334,7 +1360,7 @@ class Bake:
     def write(self, path):
         be = self.backend
         out = bytearray(b'BFGS')
-        out += struct.pack('<IIIIII', 1, W, H, len(self.images.textures), len(self.progs.list), len(be.cmds))
+        out += struct.pack('<IIIIII', 2, W, H, len(self.images.textures), len(self.progs.list), len(be.cmds))
         for t in self.images.textures:
             out += texture_record(t)
         for p in self.progs.list:
@@ -1502,6 +1528,7 @@ def main():
     ap.add_argument('--time', type=float, default=10.0, help='material time, seconds')
     ap.add_argument('--out', required=True)
     ap.add_argument('--no-shadows', action='store_true', help='debug: leave out the shadow volumes')
+    ap.add_argument('--no-depth-bounds', action='store_true', help='r_useLightDepthBounds 0 (GL_EXT_depth_bounds_test off)')
     ap.add_argument('--white-lights', type=int, default=0, help='debug: 1 white falloff, 2 white projection images')
     ap.add_argument('--only', nargs='*', default=[], help='debug: only materials containing one of these')
     ap.add_argument('--exclude', nargs='*', default=[], help='debug: leave out materials containing one of these')

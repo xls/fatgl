@@ -16,6 +16,10 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include "GL/glcorearb.h"
 #include "gen/gl_decls.h"
+#ifndef GL_DEPTH_BOUNDS_TEST_EXT /* EXT_depth_bounds_test (glext.h) */
+#  define GL_DEPTH_BOUNDS_TEST_EXT 0x8890
+#  define GL_DEPTH_BOUNDS_EXT      0x8891
+#endif
 
 #include <fatmap/fatmap.h>
 #include <stdint.h>
@@ -154,7 +158,8 @@ enum {
     FGL_E_ALPHA = 1u << 5, FGL_E_COLMAT = 1u << 6, FGL_E_NORMALIZE = 1u << 7, FGL_E_SCISSOR = 1u << 8,
     FGL_E_STENCIL = 1u << 9, FGL_E_POFFSET = 1u << 10, FGL_E_RESTART = 1u << 11,
     FGL_E_PSIZE = 1u << 12, FGL_E_FOG = 1u << 13, FGL_E_DEBUG = 1u << 14,
-    FGL_E_VP = 1u << 15, FGL_E_FP = 1u << 16 /* GL_VERTEX_PROGRAM_ARB, GL_FRAGMENT_PROGRAM_ARB */
+    FGL_E_VP = 1u << 15, FGL_E_FP = 1u << 16, /* GL_VERTEX_PROGRAM_ARB, GL_FRAGMENT_PROGRAM_ARB */
+    FGL_E_DBOUNDS = 1u << 17                  /* GL_DEPTH_BOUNDS_TEST_EXT */
 };
 
 typedef struct fgl_vtx { /* an immediate mode vertex: object position, current attributes */
@@ -366,6 +371,7 @@ typedef struct fgl_ctx {
     GLenum   alpha_func;
     float    alpha_ref;
     float    poly_factor, poly_units;
+    float    dbounds[2]; /* glDepthBoundsEXT */
     int      unpack_align, unpack_row, pack_align, unpack_skip_rows, unpack_skip_pixels;
     int      unpack_swap, pack_swap; /* GL_UNPACK_SWAP_BYTES / GL_PACK_SWAP_BYTES */
 

@@ -22,6 +22,7 @@ void fgl_ctx_init(fgl_ctx* c)
     fm3d_set_blend_state(c->c3, &off); /* straight colors everywhere, as GL keeps them */
     c->depth_func   = GL_LESS;
     c->depth_mask   = GL_TRUE;
+    c->dbounds[1]   = 1.0f;
     c->cull_face    = GL_BACK;
     c->front_face   = GL_CCW;
     c->shade_model  = GL_SMOOTH;
@@ -145,6 +146,7 @@ static unsigned fgl_cap_bit(GLenum cap)
     case GL_VERTEX_PROGRAM_ARB: return FGL_E_VP;
     case GL_FRAGMENT_PROGRAM_ARB: return FGL_E_FP;
     case GL_POLYGON_OFFSET_FILL: return FGL_E_POFFSET;
+    case GL_DEPTH_BOUNDS_TEST_EXT: return FGL_E_DBOUNDS;
     default: return 0;
     }
 }
@@ -314,6 +316,16 @@ void APIENTRY glPolygonOffset(GLfloat factor, GLfloat units)
     FGL_CTX_OR_RETURN(c);
     c->poly_factor = factor, c->poly_units = units;
 }
+void APIENTRY glDepthBoundsEXT(GLdouble zmin, GLdouble zmax)
+{
+    FGL_CTX_OR_RETURN(c);
+    if (zmin > zmax) {
+        fgl_error(GL_INVALID_VALUE);
+        return;
+    }
+    c->dbounds[0] = (float)(zmin < 0 ? 0 : (zmin > 1 ? 1 : zmin));
+    c->dbounds[1] = (float)(zmax < 0 ? 0 : (zmax > 1 ? 1 : zmax));
+}
 void APIENTRY glPixelStorei(GLenum p, GLint v)
 {
     FGL_CTX_OR_RETURN(c);
@@ -425,6 +437,7 @@ void fgl_sync(fgl_ctx* c)
     fm3d_set_alpha_test(f, (c->enables & FGL_E_ALPHA) ? (fm3d_compare)(c->alpha_func - GL_NEVER) : FM3D_ALWAYS, c->alpha_ref);
     if (c->enables & FGL_E_POFFSET) fm3d_set_depth_bias(f, c->poly_factor, c->poly_units);
     else fm3d_set_depth_bias(f, 0, 0);
+    fm3d_set_depth_bounds(f, (c->enables & FGL_E_DBOUNDS) != 0, c->dbounds[0], c->dbounds[1]);
     fgl_sync_stencil(c);
     fgl_bind_draw(c); /* again: depth only framebuffers turn color writes off */
 }
@@ -464,7 +477,7 @@ static const char* g_ext[] = {
     "GL_ARB_texture_non_power_of_two", "GL_ARB_depth_texture", "GL_ARB_point_sprite", "GL_ARB_vertex_buffer_object",
     "GL_ARB_pixel_buffer_object", "GL_ARB_occlusion_query", "GL_ARB_occlusion_query2", "GL_ARB_shader_objects",
     "GL_ARB_vertex_shader", "GL_ARB_fragment_shader", "GL_ARB_shading_language_100", "GL_EXT_framebuffer_object",
-    "GL_EXT_framebuffer_blit", "GL_EXT_packed_depth_stencil",
+    "GL_EXT_framebuffer_blit", "GL_EXT_packed_depth_stencil", "GL_EXT_depth_bounds_test",
     /* GL 3.x */
     "GL_ARB_framebuffer_object", "GL_ARB_vertex_array_object", "GL_ARB_uniform_buffer_object", "GL_ARB_draw_instanced",
     "GL_ARB_instanced_arrays", "GL_ARB_draw_elements_base_vertex", "GL_ARB_map_buffer_range", "GL_ARB_copy_buffer",

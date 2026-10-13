@@ -49,6 +49,7 @@ GLP(void, glGenVertexArrays, (GLsizei, GLuint*))
 GLP(void, glBindVertexArray, (GLuint))
 GLP(void, glStencilOpSeparate, (GLenum, GLenum, GLenum, GLenum))
 GLP(void, glDrawElementsBaseVertex, (GLenum, GLsizei, GLenum, const void*, GLint))
+GLP(void, glDepthBoundsEXT, (GLdouble, GLdouble))
 #define LD(n) n##_ = (T_##n)(void*)wglGetProcAddress(#n)
 
 #define GL_TEXTURE0_          0x84C0
@@ -68,7 +69,7 @@ GLP(void, glDrawElementsBaseVertex, (GLenum, GLsizei, GLenum, const void*, GLint
 #define GL_TEXTURE_BORDER_    0x1004
 
 enum { OP_STATE = 1, OP_CULL, OP_POLYOFS, OP_SCISSOR, OP_CLEAR, OP_PROGRAM, OP_VA, OP_FA, OP_TEX, OP_STENCILSEP, OP_DRAW,
-       OP_COPYFB, OP_VIEWPORT, OP_MARK };
+       OP_COPYFB, OP_VIEWPORT, OP_MARK, OP_DBOUNDS };
 
 typedef struct prog {
     GLuint id;
@@ -479,6 +480,18 @@ static void frame(int sections)
             p += 8;
             if (g_state & GLS_POLYGON_OFFSET) glPolygonOffset(g_ofs_scale, g_ofs_bias);
         } break;
+        case OP_DBOUNDS: { /* GL_DepthBoundsTest */
+            float b[2];
+            memcpy(b, p, 8);
+            p += 8;
+            if (!glDepthBoundsEXT_) break;
+            if (b[0] == 0.0f && b[1] == 0.0f) {
+                glDisable(0x8890 /* GL_DEPTH_BOUNDS_TEST_EXT */);
+            } else {
+                glEnable(0x8890);
+                glDepthBoundsEXT_(b[0], b[1]);
+            }
+        } break;
         case OP_SCISSOR: {
             int32_t r[4];
             memcpy(r, p, 16);
@@ -615,7 +628,8 @@ int main(int argc, char** argv)
         return 1;
     }
     g_at = 4;
-    if (rd32() != 1) {
+    uint32_t version = rd32();
+    if (version != 1 && version != 2) { /* 2: depth bounds */
         printf("%s: unknown version\n", path);
         return 1;
     }
@@ -646,6 +660,7 @@ int main(int argc, char** argv)
     LD(glGetUniformLocation), LD(glUniform4fv), LD(glUniform1i), LD(glGenBuffers), LD(glBindBuffer), LD(glBufferData);
     LD(glVertexAttribPointer), LD(glEnableVertexAttribArray), LD(glDisableVertexAttribArray), LD(glActiveTexture);
     LD(glCompressedTexImage2D), LD(glGenVertexArrays), LD(glBindVertexArray), LD(glStencilOpSeparate), LD(glDrawElementsBaseVertex);
+    LD(glDepthBoundsEXT); /* GL_EXT_depth_bounds_test: NULL without it (BFG then skips the test) */
 
     double tl = now_ms();
     load_textures();

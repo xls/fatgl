@@ -472,6 +472,7 @@ void APIENTRY glGetProgramLocalParameterfvARB(GLenum target, GLuint index, GLflo
 void APIENTRY glGetProgramivARB(GLenum target, GLenum pname, GLint *params);
 void APIENTRY glGetProgramStringARB(GLenum target, GLenum pname, void *string);
 GLboolean APIENTRY glIsProgramARB(GLuint program);
+void APIENTRY glDepthBoundsEXT(GLdouble zmin, GLdouble zmax);
 void APIENTRY glProgramEnvParameters4fvEXT(GLenum target, GLuint index, GLsizei count, const GLfloat *params);
 void APIENTRY glProgramLocalParameters4fvEXT(GLenum target, GLuint index, GLsizei count, const GLfloat *params);
 #endif

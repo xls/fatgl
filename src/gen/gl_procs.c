@@ -167,6 +167,7 @@ const fgl_proc fgl_procs[] = {
     { "glDeleteTextures", (PROC)(void (*)(void))glDeleteTextures },
     { "glDeleteTexturesEXT", (PROC)(void (*)(void))glDeleteTextures },
     { "glDeleteVertexArrays", (PROC)(void (*)(void))glDeleteVertexArrays },
+    { "glDepthBoundsEXT", (PROC)(void (*)(void))glDepthBoundsEXT },
     { "glDepthFunc", (PROC)(void (*)(void))glDepthFunc },
     { "glDepthMask", (PROC)(void (*)(void))glDepthMask },
     { "glDepthRange", (PROC)(void (*)(void))glDepthRange },
@@ -1052,4 +1053,4 @@ const fgl_proc fgl_procs[] = {
     { "wglMakeContextCurrentARB", (PROC)(void (*)(void))wglMakeContextCurrentARB },
     { "wglSwapIntervalEXT", (PROC)(void (*)(void))wglSwapIntervalEXT },
 };
-const int fgl_nprocs = 1048;
+const int fgl_nprocs = 1049;

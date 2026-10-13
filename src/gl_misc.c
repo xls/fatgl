@@ -744,6 +744,7 @@ int fgl_get_misc(fgl_ctx* c, GLenum p, double* v)
     case GL_PIXEL_UNPACK_BUFFER_BINDING: v[0] = c->unpack_buffer; return 1;
     case GL_POLYGON_OFFSET_FACTOR: v[0] = c->poly_factor; return 1;
     case GL_POLYGON_OFFSET_UNITS: v[0] = c->poly_units; return 1;
+    case GL_DEPTH_BOUNDS_EXT: v[0] = c->dbounds[0], v[1] = c->dbounds[1]; return 2;
     case GL_ALPHA_TEST_FUNC: v[0] = c->alpha_func; return 1;
     case GL_ALPHA_TEST_REF: v[0] = c->alpha_ref; return 1;
     case GL_COLOR_WRITEMASK: for (int i = 0; i < 4; i++) v[i] = c->color_mask[i]; return 4;

@@ -64,9 +64,10 @@ def find_game(arg):
 
 def read_ppm(p):
     d = open(p, 'rb').read()
-    parts = d.split(None, 4)
+    head, data = d.split(b'\n', 1)  # one header line "P6 w h 255" (splitting on any whitespace eats pixel bytes)
+    parts = head.split()
     w, h = int(parts[1]), int(parts[2])
-    return w, h, parts[4][: w * h * 3]
+    return w, h, data[: w * h * 3]
 
 
 def write_png(p, w, h, rgb):
