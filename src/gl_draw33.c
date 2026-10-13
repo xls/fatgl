@@ -538,7 +538,9 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
         for (GLsizei i = 0; i < count; i++) vid[i] = first + i;
         vmin = first, vmax = first + count - 1;
     }
+    int clean = 1; /* every vertex number valid: no restarts */
     if (vmin < 0 || vmax < vmin) { /* restart indices, or ones that came out negative: those are skipped */
+        clean = 0;
         vmin = 0x7fffffff, vmax = -1;
         for (GLsizei i = 0; i < count; i++)
             if (vid[i] >= 0) vmin = vid[i] < vmin ? vid[i] : vmin, vmax = vid[i] > vmax ? vid[i] : vmax;
@@ -559,7 +561,13 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
     }
     GLenum pm = mode >= GL_TRIANGLES ? fgl_polygon_mode(c) : GL_FILL; /* glPolygonMode: polygons as their edges / vertices */
     if (pm == GL_POINT) mode = GL_POINTS;
-    int nidx = pm == GL_LINE ? fgl_outline(mode, vid, count, vmin, tri) : fgl_assemble(mode, vid, count, vmin, tri);
+    int nidx;
+    if (pm != GL_LINE && mode == GL_TRIANGLES && clean) { /* the common case: whole triangles, one loop */
+        nidx = count - count % 3;
+        for (int i = 0; i < nidx; i++) tri[i] = (uint32_t)(vid[i] - vmin);
+    } else {
+        nidx = pm == GL_LINE ? fgl_outline(mode, vid, count, vmin, tri) : fgl_assemble(mode, vid, count, vmin, tri);
+    }
     fm3d_primitive prim = mode == GL_POINTS ? FM3D_PRIM_POINTS : (mode <= GL_LINE_STRIP || pm == GL_LINE ? FM3D_PRIM_LINES : FM3D_PRIM_TRIANGLES);
     /* where each input comes from (resolved once per draw) */
     int               per_instance = 0;
