@@ -87,6 +87,7 @@ Environment variables:
 | `FATGL_MSAA=0` / `4` / `8` | window anti-aliasing off / 4x / 8x, whatever the pixel format asks (start of F8) |
 | `FATGL_SHADERS=jit` / `avx2` / `interp` | shaders on the JIT, the JIT at AVX2, the interpreter (start of F7) |
 | `FATGL_TEXTURES=fast` | trilinear filtering as bilinear from the nearest mip level (start of F6) |
+| `FATGL_PIPELINE=0` | no frame pipelining: SwapBuffers renders and presents the frame before it returns (by default frame N renders while the game prepares N + 1 and shows one SwapBuffers later, like a GPU driver queue) |
 | `FATGL_PRECISE_MATH=1` | shader math within 1 ulp instead of GPU-like precision (slower) |
 | `FATGL_DUMP_SPIRV=<dir>` | write every linked program's SPIR-V |
 | `FATGL_LOAD_SPIRV=<dir>` | use such files instead (e.g. after `spirv-opt`) |
@@ -201,7 +202,9 @@ the exact modes agree and compares against the local `golden.txt` (`--update`).
 (fragments in / shaded, hierarchical z rejects, phase times, worker
 utilization); `--sample s.txt` records instruction pointers of the timed frames
 and `python tools/bfgscene/profile.py s.txt [--fn <function>]` lists the hot
-functions (and a function's hot instructions). `python
+functions (and a function's hot instructions). `--swap` also times the frames
+back to back with SwapBuffers between them (throughput: frame pipelining
+overlaps them; the per frame times above wait with glFinish). `python
 tools/bfgscene/llvmpipe.py [--no-aniso]` replays the scenes on Mesa's llvmpipe
 in a Linux container (Docker; bfgscene builds for Linux with EGL). Not baked yet: GUIs,
 particles, animated models, fog / blend lights, post process.

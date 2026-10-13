@@ -208,11 +208,33 @@ BOOL WINAPI wglCopyContext(HGLRC src, HGLRC dst, UINT mask)
 }
 
 /* ---- presentation ---- */
+/* Frame pipelining (FATGL_PIPELINE=0: off): frame N renders on fatmap's threads
+ * (fm3d_submit) while the application prepares frame N + 1, and SwapBuffers presents
+ * frame N - 1 (one frame later, like a GPU driver's queue; BFG frames on 32 threads:
+ * 14 -> 11.5 ms garage, 7.7 -> 5.7 alphalabs). Anything that reads or replaces the
+ * buffers waits first (fgl_flush -> fm3d_flush). */
+static int fgl_pipeline(void)
+{
+    static int on = -1;
+    if (on < 0) {
+        const char* e = getenv("FATGL_PIPELINE");
+        on = !(e && e[0] == '0');
+    }
+    return on;
+}
+
 BOOL WINAPI wglSwapBuffers(HDC hdc)
 {
     fgl_ctx* c = t_cur;
     if (!c) return FALSE;
-    fgl_flush(c);
+    int pipe = fgl_pipeline() && c->c3;
+    if (pipe && c->pipe_primed) {
+        fm3d_finish(c->c3); /* the frame submitted at the last SwapBuffers */
+        c->epoch++;
+    } else {
+        fgl_flush(c); /* the first frame shows at once (then it shows twice, never an unrendered one) */
+        c->pipe_primed = pipe;
+    }
     fgl_overlay_frame(c);
     BITMAPINFO bi;
     memset(&bi, 0, sizeof(bi));
@@ -223,6 +245,7 @@ BOOL WINAPI wglSwapBuffers(HDC hdc)
     bi.bmiHeader.biBitCount    = 32;
     bi.bmiHeader.biCompression = BI_RGB;
     SetDIBitsToDevice(hdc, 0, 0, (DWORD)c->fbw, (DWORD)c->fbh, 0, 0, 0, (UINT)c->fbh, c->color->data, &bi, DIB_RGB_COLORS);
+    if (pipe) fm3d_submit(c->c3); /* this frame, presented at the next SwapBuffers */
     int w, h; /* follow the window size */
     fgl_client_size(hdc, &w, &h);
     if (w != c->fbw || h != c->fbh) fgl_resize(c, w, h);

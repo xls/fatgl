@@ -376,6 +376,7 @@ typedef struct fgl_ctx {
     fm_surface*  depth; /* D24S8 */
     int          fbw, fbh;
     int          made_current; /* the first wglMakeCurrent sets the viewport */
+    int          pipe_primed;  /* SwapBuffers pipelines (a frame was presented synchronously) */
     int          major, minor, core; /* requested version (wglCreateContextAttribsARB) */
     GLenum       error;
 

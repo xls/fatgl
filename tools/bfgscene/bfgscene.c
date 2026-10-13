@@ -634,7 +634,7 @@ int main(int argc, char** argv)
     const char* path = NULL;
     const char* out = "bfgscene.ppm";
     const char* sample = NULL;
-    int         frames = 10, sections = 0, show = 0, prof = 0, npos = 0;
+    int         frames = 10, sections = 0, show = 0, prof = 0, swap = 0, npos = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--sections"))
             sections = 1;
@@ -646,6 +646,8 @@ int main(int argc, char** argv)
             sample = argv[++i];
         else if (!strcmp(argv[i], "--show"))
             show = 1;
+        else if (!strcmp(argv[i], "--swap"))
+            swap = 1;
         else if (npos == 0)
             path = argv[i], npos++;
         else if (npos == 1)
@@ -654,7 +656,7 @@ int main(int argc, char** argv)
             out = argv[i], npos++;
     }
     if (!path) {
-        printf("bfgscene <scene.bfgs> [frames] [out.ppm] [--sections] [--prof] [--sample <file>] [--show]\n");
+        printf("bfgscene <scene.bfgs> [frames] [out.ppm] [--sections] [--prof] [--sample <file>] [--show] [--swap]\n");
         return 1;
     }
     FILE* f = fopen(path, "rb");
@@ -857,6 +859,20 @@ int main(int argc, char** argv)
             if (strcmp(g_sect_name[i], "end")) printf("  %-16s %7.2f ms\n", g_sect_name[i], g_sect_ms[i]);
     printf("mean color %.2f %.2f %.2f\n", sum[0] / (g_w * g_h), sum[1] / (g_w * g_h), sum[2] / (g_w * g_h));
     printf("hash %016llx\n", (unsigned long long)h);
+#ifdef _WIN32
+    if (swap) { /* throughput: frames back to back, SwapBuffers between them (fatgl's FATGL_PIPELINE overlaps them) */
+        double t0 = now_ms();
+        for (int i = 0; i < frames; i++) {
+            frame(0);
+            SwapBuffers(dc);
+        }
+        glFinish();
+        double per = (now_ms() - t0) / frames;
+        static uint8_t im2[4096 * 4096 * 4];
+        glReadPixels(0, 0, g_w, g_h, GL_RGBA, GL_UNSIGNED_BYTE, im2);
+        printf("throughput %.2f ms per frame with SwapBuffers (%s image)\n", per, memcmp(img, im2, (size_t)g_w * g_h * 4) ? "a different" : "the same");
+    }
+#endif
     for (char* l = rep; report && *l;) { /* "prof " lines */
         char* e = strchr(l, '\n');
         if (e) *e = 0;
