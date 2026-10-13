@@ -16,6 +16,8 @@ void fgl_ctx_init(fgl_ctx* c)
         fm3d_set_executor(c->c3, c->ex);
         fm3d_set_deferred(c->c3, 1);
     }
+    const char* ts = getenv("FATGL_TILE"); /* tile size in pixels (tuning; fatmap's default otherwise) */
+    if (ts && atoi(ts) >= 8) fm3d_set_tile_size(c->c3, atoi(ts));
     fm3d_set_clip_depth(c->c3, FM3D_DEPTH_NEG_ONE_ONE);
     fm3d_set_origin(c->c3, FM3D_ORIGIN_LOWER_LEFT); /* GL window coordinates: row 0 at the bottom */
     fm3d_blend_state off = { FM3D_BF_ONE, FM3D_BF_ZERO, FM3D_BF_ONE, FM3D_BF_ZERO, FM3D_BLEND_ADD, FM3D_BLEND_ADD, 0 };
