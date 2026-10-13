@@ -432,6 +432,8 @@ typedef struct fgl_ctx {
     /* textures */
     fgl_tex* tex;
     int      ntex;
+    int*     tex_map; /* name -> slot + 1 (0: none, names below tex_map_n), checked against the slot */
+    int      tex_map_n;
     GLenum   tex_env;           /* unit 0 (= tex_envs[0]) */
     GLenum   tex_envs[FGL_UNITS]; /* glTexEnv GL_TEXTURE_ENV_MODE per texture unit */
     unsigned tex2d_units;       /* glEnable(GL_TEXTURE_2D) per texture unit */

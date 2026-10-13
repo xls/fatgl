@@ -73,6 +73,7 @@ void fgl_ctx_free(fgl_ctx* c)
     fgl_overlay_free(c);
     fgl_arb_free(c);
     free(c->tex);
+    free(c->tex_map);
     for (int i = 0; i < c->nlists; i++) free(c->lists[i].ops);
     free(c->lists);
     free(c->imm);

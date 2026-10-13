@@ -9,8 +9,13 @@
 
 fgl_tex* fgl_texture(fgl_ctx* c, GLuint name, int create)
 {
-    for (int i = 0; i < c->ntex; i++)
-        if (c->tex[i].used && c->tex[i].name == name) return &c->tex[i];
+    if (name < (GLuint)c->tex_map_n) { /* the map knows every texture of a mapped name */
+        int s = c->tex_map[name] - 1;
+        if (s >= 0 && c->tex[s].used && c->tex[s].name == name) return &c->tex[s];
+    } else {
+        for (int i = 0; i < c->ntex; i++)
+            if (c->tex[i].used && c->tex[i].name == name) return &c->tex[i];
+    }
     if (!create) return NULL;
     int slot = -1;
     for (int i = 0; i < c->ntex && slot < 0; i++)
@@ -21,6 +26,18 @@ fgl_tex* fgl_texture(fgl_ctx* c, GLuint name, int create)
         memset(n + c->ntex, 0, 16 * sizeof(fgl_tex));
         c->tex = n, slot = c->ntex, c->ntex += 16;
     }
+    if (name >= (GLuint)c->tex_map_n && name < (1u << 20)) { /* glGenTextures names: small and dense */
+        int  n = c->tex_map_n ? c->tex_map_n : 256;
+        while ((GLuint)n <= name) n *= 2;
+        int* m = (int*)realloc(c->tex_map, (size_t)n * sizeof(int));
+        if (m) {
+            memset(m + c->tex_map_n, 0, (size_t)(n - c->tex_map_n) * sizeof(int));
+            for (int i = 0; i < c->ntex; i++) /* textures of names that were beyond the map */
+                if (c->tex[i].used && c->tex[i].name >= (GLuint)c->tex_map_n && c->tex[i].name < (GLuint)n) m[c->tex[i].name] = i + 1;
+            c->tex_map = m, c->tex_map_n = n;
+        }
+    }
+    if (name < (GLuint)c->tex_map_n) c->tex_map[name] = slot + 1;
     fgl_tex* t = &c->tex[slot];
     memset(t, 0, sizeof(*t));
     t->used = 1, t->name = name, t->tt = -1, t->layers = 1;
