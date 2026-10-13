@@ -42,7 +42,7 @@ fgl_tex* fgl_texture(fgl_ctx* c, GLuint name, int create)
     memset(t, 0, sizeof(*t));
     t->used = 1, t->name = name, t->tt = -1, t->layers = 1;
     t->min_filter = GL_NEAREST_MIPMAP_LINEAR, t->mag_filter = GL_LINEAR, t->wrap_s = t->wrap_t = t->wrap_r = GL_REPEAT;
-    t->ifmt = GL_RGBA, t->min_lod = -1000, t->max_lod = 1000, t->max_level = 1000;
+    t->ifmt = GL_RGBA, t->min_lod = -1000, t->max_lod = 1000, t->max_level = 1000, t->aniso = 1;
     t->compare_mode = GL_NONE, t->compare_func = GL_LEQUAL;
     t->swizzle[0] = GL_RED, t->swizzle[1] = GL_GREEN, t->swizzle[2] = GL_BLUE, t->swizzle[3] = GL_ALPHA;
     return t;
@@ -536,7 +536,8 @@ void APIENTRY glTexParameteri(GLenum target, GLenum p, GLint v)
             t->tex = NULL;
         }
         break;
-    default: break; /* anisotropy, generate mipmap: accepted */
+    case 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY */: t->aniso = (float)v; break;
+    default: break; /* generate mipmap: accepted */
     }
 }
 void APIENTRY glTexParameterf(GLenum target, GLenum p, GLfloat v)
@@ -546,6 +547,7 @@ void APIENTRY glTexParameterf(GLenum target, GLenum p, GLfloat v)
     if (t && p == GL_TEXTURE_MIN_LOD) t->min_lod = v;
     else if (t && p == GL_TEXTURE_MAX_LOD) t->max_lod = v;
     else if (t && p == GL_TEXTURE_LOD_BIAS) t->lod_bias = v;
+    else if (t && p == 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY */) t->aniso = v;
     else glTexParameteri(target, p, (GLint)v);
 }
 void APIENTRY glTexParameteriv(GLenum target, GLenum p, const GLint* v)
@@ -590,6 +592,7 @@ static int fgl_tex_query(GLenum target, GLenum p, float* o)
     case GL_TEXTURE_MIN_LOD: o[0] = t->min_lod; return 1;
     case GL_TEXTURE_MAX_LOD: o[0] = t->max_lod; return 1;
     case GL_TEXTURE_LOD_BIAS: o[0] = t->lod_bias; return 1;
+    case 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY */: o[0] = t->aniso; return 1;
     case GL_TEXTURE_COMPARE_MODE: o[0] = (float)t->compare_mode; return 1;
     case GL_TEXTURE_COMPARE_FUNC: o[0] = (float)t->compare_func; return 1;
     case GL_TEXTURE_BORDER_COLOR: memcpy(o, t->border, 16); return 4;

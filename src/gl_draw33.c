@@ -211,6 +211,17 @@ static fm_wrap fgl_wrap(GLenum w)
     }
 }
 
+/* FATGL_ANISO=<n>: at most n samples of anisotropic filtering (0 / 1: off; default 16) */
+static float fgl_aniso_cap(void)
+{
+    static float cap = -1.0f;
+    if (cap < 0.0f) {
+        const char* e = getenv("FATGL_ANISO");
+        cap           = e ? (float)atof(e) : 16.0f;
+    }
+    return cap;
+}
+
 int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_sampler* s)
 {
     if (!t || (!t->level0 && !t->depth)) return 0;
@@ -258,6 +269,8 @@ int fgl_texture_use(fgl_ctx* c, fgl_tex* t, int unit, fm3d_texture** tex, fm3d_s
     if (mag_filter == GL_NEAREST && min_filter == GL_NEAREST) s->filter = FM3D_FILTER_NEAREST;
     if (s->filter == FM3D_FILTER_TRILINEAR && fgl_tex_fast()) s->filter = FM3D_FILTER_BILINEAR_MIPMAP; /* F6 */
     s->wrap_u = fgl_wrap(wrap_s), s->wrap_v = fgl_wrap(wrap_t), s->wrap_w = fgl_wrap(wrap_r);
+    float an  = so ? so->aniso : t->aniso, cap = fgl_aniso_cap();
+    s->max_aniso = fgl_tex_fast() ? 0.0f : (an < cap ? an : cap); /* F6: speed first */
     *tex      = t->tex;
     return 1;
 }

@@ -87,6 +87,7 @@ Environment variables:
 | `FATGL_MSAA=0` / `4` / `8` | window anti-aliasing off / 4x / 8x, whatever the pixel format asks (start of F8) |
 | `FATGL_SHADERS=jit` / `avx2` / `interp` | shaders on the JIT, the JIT at AVX2, the interpreter (start of F7) |
 | `FATGL_TEXTURES=fast` | trilinear filtering as bilinear from the nearest mip level (start of F6) |
+| `FATGL_ANISO=<n>` | anisotropic filtering with at most n samples (default 16: what the application asks for, BFG 8x; 0: off, faster on surfaces seen at an angle; F6 turns it off too) |
 | `FATGL_PIPELINE=0` | no frame pipelining: SwapBuffers renders and presents the frame before it returns (by default frame N renders while the game prepares N + 1 and shows one SwapBuffers later, like a GPU driver queue) |
 | `FATGL_PRECISE_MATH=1` | shader math within 1 ulp instead of GPU-like precision (slower) |
 | `FATGL_DUMP_SPIRV=<dir>` | write every linked program's SPIR-V |
@@ -118,7 +119,7 @@ Whole Doom 3 BFG frames (`tools/bfgscene`, baked from the game's assets:
 depth pass, stencil shadow volumes, light interactions, ambient stages;
 1280 x 720), best of several runs. `tools/bfgscene/llvmpipe.py` replays the
 same scene files on llvmpipe (the images agree within about one level on
-average); without anisotropic filtering, which fatgl does not do yet:
+average). Without anisotropic filtering (`FATGL_ANISO=0`, `llvmpipe.py --no-aniso`):
 
 | scene | fatgl 1 thread | llvmpipe 1 thread | fatgl 32 threads | llvmpipe 32 threads |
 |---|---|---|---|---|
@@ -126,9 +127,16 @@ average); without anisotropic filtering, which fatgl does not do yet:
 | Alpha Labs 1 | 47 ms | 138 ms | 4.8 ms | 25.6 ms |
 | Hell | 109 ms | 286 ms | 7.2 ms | 26.4 ms |
 
-(fatgl's and fatmap's main branches; fatgl 0.7.0 with fatmap 0.10.0: 181 / 73 /
-130 ms and 15.3 / 7.9 / 9.1 ms. With 4x MSAA on 32 threads: 25 / 8 / 10 ms, was 105 /
-43 / 18 ms.)
+(fatgl 0.7.0 with fatmap 0.10.0: 181 / 73 / 130 ms and 15.3 / 7.9 / 9.1 ms. With 4x
+MSAA on 32 threads: 25 / 8 / 10 ms, was 105 / 43 / 18 ms.)
+
+With the 8x anisotropic filtering BFG asks for (both renderers):
+
+| scene | fatgl 1 thread | llvmpipe 1 thread | fatgl 32 threads | llvmpipe 32 threads |
+|---|---|---|---|---|
+| Underground Garage | 184 ms | 411 ms | 12.9 ms | 43.8 ms |
+| Alpha Labs 1 | 88 ms | 145 ms | 7.4 ms | 27.0 ms |
+| Hell | 241 ms | 345 ms | 13.8 ms | 26.8 ms |
 
 The shadow volumes are most of the difference: fatmap skips the batches and
 tiles whose stored depth already decides them (hierarchical z per 8 x 8

@@ -183,6 +183,7 @@ typedef struct fgl_tex {
     GLenum        min_filter, mag_filter, wrap_s, wrap_t, wrap_r;
     GLenum        ifmt; /* glTexImage2D internal format */
     float         min_lod, max_lod, lod_bias, border[4];
+    float         aniso; /* GL_TEXTURE_MAX_ANISOTROPY (1: off) */
     GLenum        compare_mode, compare_func;
     GLint         base_level, max_level;
     GLenum        swizzle[4]; /* GL_TEXTURE_SWIZZLE_R / G / B / A (applied when the fatmap texture is built) */
