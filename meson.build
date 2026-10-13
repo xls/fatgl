@@ -92,7 +92,7 @@ scene_exe = executable('scene', 'tools/scene/scene.c',
 # real Doom 3 BFG frames baked from the game's assets (tools/bfgscene/bake.py), replayed and timed
 executable('bfgscene', 'tools/bfgscene/bfgscene.c',
   c_args : args,
-  dependencies : [sys_gl, gdi, cc.find_library('user32')],
+  dependencies : [sys_gl, gdi, cc.find_library('user32'), cc.find_library('winmm')],
   link_args : static_rt)
 py = find_program('python3', 'python', required : false)
 if py.found()

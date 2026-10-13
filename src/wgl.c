@@ -248,9 +248,45 @@ BOOL WINAPI wglSwapIntervalEXT(int interval)
 }
 int WINAPI wglGetSwapIntervalEXT(void) { return g_swap_interval; }
 
+/* ---- fglReportFATGL(buf, size, frames): fatmap's statistics and profiler zones
+ * since the previous call with frames <= 0 (which resets them), per frame, for
+ * tools (bfgscene --prof); wglGetProcAddress("fglReportFATGL") ---- */
+static fm3d_stats g_report_base;
+
+static int WINAPI fglReportFATGL(char* buf, int size, int frames)
+{
+    fgl_ctx* c = fgl_cur();
+    if (!c) return 0;
+    fgl_flush(c);
+    fm3d_stats st = fm3d_get_stats(c->c3);
+    if (frames <= 0) {
+        g_report_base = st;
+        fm_prof_set_enabled(1);
+        fm_prof_reset();
+        return 0;
+    }
+    uint64_t*       d = (uint64_t*)(void*)&st;
+    const uint64_t* b = (const uint64_t*)(const void*)&g_report_base;
+    for (size_t i = 0; i < sizeof(st) / 8; i++) d[i] -= b[i];
+    st.workers = fm3d_get_stats(c->c3).workers;
+    double f = (double)frames, ns = (double)(st.ns_vertex + st.ns_setup + st.ns_raster);
+    int    n = snprintf(buf, (size_t)size,
+                        "per frame: %.0f draws, %.0f flushes, %.0f triangles in, %.0f drawn, %.0f tile items, %.0f tiles\n"
+                        "  fragments in %.0f, shaded %.0f; hiz rejected %.0f\n"
+                        "  vertex %.2f ms, setup + bin %.2f ms, tiles %.2f ms; %llu workers busy %.0f%%\n",
+                        st.draws / f, st.flushes / f, st.triangles_in / f, st.triangles_drawn / f, st.tile_items / f,
+                        st.tiles / f, st.fragments_in / f, st.fragments_shaded / f, st.hiz_rejected / f,
+                        st.ns_vertex / f / 1e6, st.ns_setup / f / 1e6, st.ns_raster / f / 1e6,
+                        (unsigned long long)st.workers, ns > 0 ? 100.0 * (double)st.ns_busy / (ns * (double)st.workers) : 0.0);
+    if (n < 0 || n >= size) return n;
+    while (fm_prof_frames() < (uint64_t)frames) fm_prof_frame(); /* the zones' per frame column */
+    return n + fm_prof_report(buf + n, size - n);
+}
+
 /* ---- entry points ---- */
 static PROC fgl_find(const char* name)
 {
+    if (!strcmp(name, "fglReportFATGL")) return (PROC)(void*)fglReportFATGL;
     int lo = 0, hi = fgl_nprocs - 1;
     while (lo <= hi) {
         int m = (lo + hi) / 2, d = strcmp(name, fgl_procs[m].name);

@@ -43,6 +43,16 @@ def read_scenes():
     return out
 
 
+def run_pinned(args, env, pin):
+    """single thread runs go on CCD0's cores 4..15 (mask 0xFFF0): stable clocks, the cache die"""
+    p = subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if pin and os.name == 'nt':
+        import ctypes
+        ctypes.windll.kernel32.SetProcessAffinityMask(ctypes.c_void_p(int(p._handle)), ctypes.c_size_t(0xFFF0))
+    out, err = p.communicate(timeout=1800)
+    return subprocess.CompletedProcess(args, p.returncode, out, err)
+
+
 def find_game(arg):
     if arg:
         return arg
@@ -115,7 +125,7 @@ def main():
             args = [exe, os.path.join(sdir, n + '.bfgs'), str(a.frames), ppm]
             if a.sections and mode == 'jit':
                 args.append('--sections')
-            r = subprocess.run(args, env=e, capture_output=True, text=True, timeout=1800)
+            r = run_pinned(args, e, mode == '1thread')
             best = med = h = None
             sect = []
             for line in r.stdout.splitlines():

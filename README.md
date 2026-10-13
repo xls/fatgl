@@ -175,8 +175,13 @@ replays that command stream. `tools/bfgscene/scenes.txt` lists the frames
 [--game <dir>] [--sections]` bakes them once into `<build>/bfgscenes` (git
 ignored: they hold id's textures), then times each in every mode, checks that
 the exact modes agree and compares against the local `golden.txt` (`--update`).
-`bfgscene <file> --show` opens a window (the F6 to F10 keys work). Not baked
-yet: GUIs, particles, animated models, fog / blend lights, post process.
+`bfgscene <file> --show` opens a window (the F6 to F10 keys work). Profiling:
+`bfgscene <file> 5 out.ppm --prof` prints fatmap's per frame statistics
+(fragments in / shaded, hierarchical z rejects, phase times, worker
+utilization); `--sample s.txt` records instruction pointers of the timed frames
+and `python tools/bfgscene/profile.py s.txt [--fn <function>]` lists the hot
+functions (and a function's hot instructions). Not baked yet: GUIs,
+particles, animated models, fog / blend lights, post process.
 
 `examples/*.exe --shot file.bmp` renders 30 frames, saves the last one and
 quits.

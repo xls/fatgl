@@ -3,10 +3,12 @@
  * opengl32.dll (fatgl's when it sits next to the executable). The scene file
  * is a GL command stream the way BFG's backend issues it; GL_State below is
  * the port of BFG's (gl_GraphicsAPIWrapper.cpp), so state changes match.
- *   bfgscene <scene.bfgs> [frames] [out.ppm] [--sections] [--show]
+ *   bfgscene <scene.bfgs> [frames] [out.ppm] [--sections] [--prof] [--sample <file>] [--show]
  * Prints the best and median frame times and the image's FNV-1a hash.
  * --sections also times the depth fill, interactions and shader passes
- * (a glFinish between them). --show opens the window and renders until it is
+ * (a glFinish between them). --prof prints fatgl's statistics and fatmap's
+ * profiler zones; --sample writes instruction pointer samples of the timed
+ * frames (tools/bfgscene/profile.py). --show opens the window and renders until it is
  * closed (fatgl's F6 / F7 / F8 / F10 keys work there). */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -336,6 +338,89 @@ static double now_ms(void)
     return (double)t.QuadPart * 1000.0 / g_qpf;
 }
 
+/* ---- --sample <file>: a sampling profiler. A thread stops every other
+ * thread every quarter millisecond and records its instruction pointer; the
+ * file lists module relative addresses (tools/bfgscene/profile.py names
+ * them: fatgl's functions, JIT code, waits) ---- */
+#include <mmsystem.h>
+#include <tlhelp32.h>
+#define MAX_SAMPLES (1 << 22)
+static uint64_t*     g_samples;
+static volatile LONG g_nsamples, g_sampling;
+
+static DWORD WINAPI sampler(void* arg)
+{
+    (void)arg;
+    DWORD  self = GetCurrentThreadId();
+    HANDLE th[256];
+    int    nth = 0;
+    double last = -1e9;
+    timeBeginPeriod(1);
+    while (g_sampling) {
+        if (now_ms() - last > 100) { /* the thread list again (pools start lazily) */
+            for (int i = 0; i < nth; i++) CloseHandle(th[i]);
+            nth = 0;
+            HANDLE        snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            THREADENTRY32 te;
+            memset(&te, 0, sizeof(te));
+            te.dwSize = sizeof(te);
+            for (BOOL ok = Thread32First(snap, &te); ok && nth < 256; ok = Thread32Next(snap, &te))
+                if (te.th32OwnerProcessID == GetCurrentProcessId() && te.th32ThreadID != self) {
+                    HANDLE h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
+                    if (h) th[nth++] = h;
+                }
+            CloseHandle(snap);
+            last = now_ms();
+        }
+        for (int i = 0; i < nth; i++) {
+            if (SuspendThread(th[i]) == (DWORD)-1) continue;
+            CONTEXT cx;
+            cx.ContextFlags = CONTEXT_CONTROL;
+            if (GetThreadContext(th[i], &cx)) {
+                LONG k = InterlockedIncrement(&g_nsamples) - 1;
+#ifdef _WIN64
+                if (k < MAX_SAMPLES) g_samples[k] = cx.Rip;
+#else
+                if (k < MAX_SAMPLES) g_samples[k] = cx.Eip;
+#endif
+            }
+            ResumeThread(th[i]);
+        }
+        double t = now_ms(); /* about 4 kHz: Sleep(1) is too coarse */
+        while (now_ms() - t < 0.25) SwitchToThread();
+    }
+    for (int i = 0; i < nth; i++) CloseHandle(th[i]);
+    timeEndPeriod(1);
+    return 0;
+}
+
+static void sample_write(const char* path)
+{
+    FILE* f = fopen(path, "w");
+    if (!f) return;
+    LONG n = g_nsamples < MAX_SAMPLES ? g_nsamples : MAX_SAMPLES;
+    /* module of each address: the last lookup is cached (samples cluster) */
+    HMODULE lm = NULL;
+    char    lname[MAX_PATH] = "";
+    for (LONG i = 0; i < n; i++) {
+        uint64_t a = g_samples[i];
+        HMODULE  m = NULL;
+        if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)(uintptr_t)a, &m))
+            m = NULL;
+        if (m != lm) {
+            lm = m;
+            lname[0] = 0;
+            if (m) GetModuleFileNameA(m, lname, sizeof(lname));
+        }
+        if (m)
+            fprintf(f, "%s %llx\n", lname, (unsigned long long)(a - (uint64_t)(uintptr_t)m));
+        else
+            fprintf(f, "- %llx\n", (unsigned long long)a);
+    }
+    fclose(f);
+    printf("%ld samples in %s\n", (long)n, path);
+}
+
 #define NSECT 8
 static const char* g_sect_name[NSECT];
 static double      g_sect_ms[NSECT];
@@ -492,10 +577,15 @@ int main(int argc, char** argv)
 {
     const char* path = NULL;
     const char* out = "bfgscene.ppm";
-    int         frames = 10, sections = 0, show = 0, npos = 0;
+    const char* sample = NULL;
+    int         frames = 10, sections = 0, show = 0, prof = 0, npos = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--sections"))
             sections = 1;
+        else if (!strcmp(argv[i], "--prof"))
+            prof = 1;
+        else if (!strcmp(argv[i], "--sample") && i + 1 < argc)
+            sample = argv[++i];
         else if (!strcmp(argv[i], "--show"))
             show = 1;
         else if (npos == 0)
@@ -506,7 +596,7 @@ int main(int argc, char** argv)
             out = argv[i], npos++;
     }
     if (!path) {
-        printf("bfgscene <scene.bfgs> [frames] [out.ppm] [--sections] [--show]\n");
+        printf("bfgscene <scene.bfgs> [frames] [out.ppm] [--sections] [--prof] [--sample <file>] [--show]\n");
         return 1;
     }
     FILE* f = fopen(path, "rb");
@@ -603,13 +693,32 @@ int main(int argc, char** argv)
         }
     }
 
+    /* --prof: fatgl's statistics and fatmap's profiler zones over the timed frames */
+    typedef int(WINAPI * report_fn)(char*, int, int);
+    report_fn report = prof ? (report_fn)(void*)wglGetProcAddress("fglReportFATGL") : NULL;
+    if (prof && !report) printf("--prof: not fatgl's opengl32.dll\n");
+    HANDLE  hs = NULL;
     double* ms = (double*)malloc(sizeof(double) * (size_t)(frames > 0 ? frames : 1));
     for (int i = 0; i < frames + 1; i++) { /* frame 0 warms up (JIT compiles, texture caches) */
         double t = now_ms();
         frame(0);
         glFinish();
         if (i > 0) ms[i - 1] = now_ms() - t;
+        if (i == 0 && report) report(NULL, 0, 0);
+        if (i == 0 && sample) {
+            g_samples  = (uint64_t*)malloc(sizeof(uint64_t) * MAX_SAMPLES);
+            g_sampling = 1;
+            hs         = CreateThread(NULL, 0, sampler, NULL, 0, NULL);
+            SetThreadPriority(hs, THREAD_PRIORITY_TIME_CRITICAL);
+        }
     }
+    if (hs) {
+        g_sampling = 0;
+        WaitForSingleObject(hs, INFINITE);
+        sample_write(sample);
+    }
+    static char rep[65536];
+    if (report) report(rep, sizeof(rep), frames);
     if (sections) {
         frame(1);
         glFinish();
@@ -632,6 +741,13 @@ int main(int argc, char** argv)
             if (strcmp(g_sect_name[i], "end")) printf("  %-16s %7.2f ms\n", g_sect_name[i], g_sect_ms[i]);
     printf("mean color %.2f %.2f %.2f\n", sum[0] / (g_w * g_h), sum[1] / (g_w * g_h), sum[2] / (g_w * g_h));
     printf("hash %016llx\n", (unsigned long long)h);
+    for (char* l = rep; report && *l;) { /* "prof " lines */
+        char* e = strchr(l, '\n');
+        if (e) *e = 0;
+        printf("prof %s\n", l);
+        if (!e) break;
+        l = e + 1;
+    }
     FILE* o = fopen(out, "wb");
     if (o) {
         fprintf(o, "P6 %d %d 255\n", g_w, g_h);
