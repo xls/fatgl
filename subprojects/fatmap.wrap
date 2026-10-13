@@ -2,10 +2,10 @@
 # For development against a local fatmap, install it and point
 # PKG_CONFIG_PATH at <prefix>/lib/pkgconfig: the dependency is found first.
 [wrap-file]
-directory = fatmap-0.11.0-windows-x64-mingw
-source_url = https://github.com/xls/fatmap/releases/download/v0.11.0/fatmap-0.11.0-windows-x64-mingw.zip
-source_filename = fatmap-0.11.0-windows-x64-mingw.zip
-source_hash = 19ddd37319f262cde65e83212cd732f49e1084a966bc45583f1b65ac049d1e77
+directory = fatmap-0.12.0-windows-x64-mingw
+source_url = https://github.com/xls/fatmap/releases/download/v0.12.0/fatmap-0.12.0-windows-x64-mingw.zip
+source_filename = fatmap-0.12.0-windows-x64-mingw.zip
+source_hash = 83fad65d708fba3fda2027ccf64e19a01519f5165a03b8c00bc0c220dc6b7fe3
 patch_directory = fatmap
 
 [provide]
