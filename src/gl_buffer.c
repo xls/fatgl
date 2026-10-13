@@ -14,6 +14,14 @@ fgl_buf* fgl_buffer(fgl_ctx* c, GLuint name)
     return NULL;
 }
 
+/* a write: new contents (cached vertex streams of the old ones never match again) */
+static void fgl_buf_written(fgl_ctx* c, fgl_buf* b)
+{
+    static uint64_t g_version;
+    b->version     = ++g_version;
+    b->write_epoch = c->epoch;
+}
+
 static fgl_buf* fgl_buffer_new(fgl_ctx* c, GLuint name)
 {
     int slot = -1;
@@ -129,6 +137,7 @@ void APIENTRY glBufferData(GLenum target, GLsizeiptr size, const void* data, GLe
     else memset(n, 0, size ? (size_t)size : 1);
     _aligned_free(b->data);
     b->data = n, b->size = size, b->usage = usage;
+    fgl_buf_written(c, b);
 }
 
 void APIENTRY glBufferSubData(GLenum target, GLintptr off, GLsizeiptr size, const void* data)
@@ -141,6 +150,7 @@ void APIENTRY glBufferSubData(GLenum target, GLintptr off, GLsizeiptr size, cons
         return;
     }
     if (data && size) memcpy(b->data + off, data, (size_t)size);
+    fgl_buf_written(c, b);
 }
 
 void APIENTRY glGetBufferSubData(GLenum target, GLintptr off, GLsizeiptr size, void* data)
@@ -167,6 +177,7 @@ void* APIENTRY glMapBufferRange(GLenum target, GLintptr off, GLsizeiptr len, GLb
     }
     (void)access;
     b->mapped = 1;
+    fgl_buf_written(c, b);
     return b->data + off;
 }
 
@@ -188,6 +199,7 @@ GLboolean APIENTRY glUnmapBuffer(GLenum target)
         return GL_FALSE;
     }
     b->mapped = 0;
+    fgl_buf_written(c, b); /* the application wrote it while mapped */
     return GL_TRUE;
 }
 
@@ -204,6 +216,7 @@ void APIENTRY glCopyBufferSubData(GLenum rt, GLenum wt, GLintptr ro, GLintptr wo
         return;
     }
     memmove(w->data + wo, r->data + ro, (size_t)size);
+    fgl_buf_written(c, w);
 }
 
 void APIENTRY glGetBufferParameteriv(GLenum target, GLenum p, GLint* v)

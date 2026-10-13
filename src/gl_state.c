@@ -74,6 +74,10 @@ void fgl_ctx_free(fgl_ctx* c)
     for (int i = 0; i < c->nlists; i++) free(c->lists[i].ops);
     free(c->lists);
     free(c->imm);
+    for (int k = 0; k < 3; k++) free(c->scratch[k]);
+    for (int i = 0; i < c->nstream_slots; i++)
+        if (c->streams[i].hash) fm3d_buffer_release(c->streams[i].buf);
+    free(c->streams);
     fm3d_destroy(c->c3);
     if (c->ex) fm_executor_destroy(c->ex);
     fm_surface_destroy(c->color);
@@ -103,6 +107,7 @@ int fgl_resize(fgl_ctx* c, int w, int h)
 void fgl_flush(fgl_ctx* c)
 {
     if (c && c->c3) fm3d_flush(c->c3);
+    if (c) c->epoch++;
 }
 
 void fgl_error(GLenum e)

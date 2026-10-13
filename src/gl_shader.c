@@ -736,12 +736,35 @@ void APIENTRY glLinkProgram(GLuint name)
         p->max_loc = -1;
         fgl_reflect(p, 0, words[0], nw[0]);
         fgl_reflect(p, 1, words[1], nw[1]);
-        /* vertex inputs read a canonical stream: location L at L * 16 bytes */
+        /* vertex inputs read a packed stream: 16 bytes per input, in order (BFG's
+         * attributes at locations 0 .. 9 use 6 slots); where each input's values
+         * come from is resolved once here (the draws only look it up) */
         fm3d_vertex_attrib at[FGL_ATTRIBS];
         int                na = 0;
-        for (int i = 0; i < p->nin; i++)
-            if (p->in[i].location >= 0 && p->in[i].location < FGL_ATTRIBS) at[na].location = p->in[i].location, at[na].components = 4,
-                                                                                at[na].offset = 16 * p->in[i].location, na++;
+        for (int i = 0; i < p->nin; i++) {
+            fgl_input* in = &p->in[i];
+            in->slot      = -1;
+            if (in->location >= 0 && in->location < FGL_ATTRIBS) {
+                in->slot          = na;
+                at[na].location   = in->location;
+                at[na].components = 4;
+                at[na].offset     = 16 * na;
+                na++;
+            }
+            int va  = -1;
+            in->va  = sscanf(in->name, "fgl_va%d", &va) == 1 && va >= 0 && va < FGL_ATTRIBS ? va : -1;
+            in->legacy = -1;
+            if (in->va < 0 && !strncmp(in->name, "fgl_", 4)) {
+                static const char* legacy[5] = { "Vertex", "Normal", "Color", "MultiTexCoord0", "MultiTexCoord1" };
+                in->legacy = -2;
+                for (int k = 0; k < 5; k++)
+                    if (!strcmp(in->name + 4, legacy[k])) in->legacy = k;
+            }
+            in->index = in->location;
+            for (int b = 0; b < p->nbind; b++) /* glBindAttribLocation wins */
+                if (!strcmp(p->bind_attrib[b].name, in->name)) in->index = (int)p->bind_attrib[b].index;
+        }
+        p->in_stride = 16 * (na > 0 ? na : 1);
         char err[256];
         p->sp = fm3d_spirv_create(words[0], nw[0], words[1], nw[1], at, na, err, sizeof(err));
         /* GPU like math precision (GPUs approximate sin / exp / pow too; ~1.2x on math heavy shaders);

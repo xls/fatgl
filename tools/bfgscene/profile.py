@@ -4,6 +4,7 @@ nm, JIT compiled shader code (addresses outside every module), other modules
 
     python tools/bfgscene/profile.py <samples.txt> [--dll build-dev/opengl32.dll] [--top 40] [--waits]
         [--fn <function>]   (the function's hot instructions, objdump disassembly)
+        [--main]            (only the main thread: the GL calls, recording; not the workers)
 
 Percentages are of the busy samples (without --waits: the samples in fatgl or
 the JIT, the work; idle pool threads sit in ntdll).
@@ -40,6 +41,7 @@ def main():
     ap.add_argument('--top', type=int, default=40)
     ap.add_argument('--waits', action='store_true', help='also count samples outside fatgl / the JIT')
     ap.add_argument('--fn', help='show the hot instructions of this function')
+    ap.add_argument('--main', action='store_true', help='only the samples of the main thread')
     a = ap.parse_args()
     addrs, names = symbols(a.dll)
     dll = os.path.basename(a.dll).lower()
@@ -47,6 +49,12 @@ def main():
     hot = collections.Counter()
     total = 0
     for line in open(a.samples):
+        line = line.rstrip('\n')
+        on_main = line.endswith(' M')
+        if on_main:
+            line = line[:-2]
+        elif a.main:
+            continue
         mod, off = line.rsplit(' ', 1)
         off = int(off, 16)
         m = os.path.basename(mod).lower()

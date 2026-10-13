@@ -202,7 +202,26 @@ typedef struct fgl_buf {
     GLsizeiptr size;
     GLenum     usage;
     int        mapped;
+    uint64_t   version;    /* unique per content (every write takes a new one): the stream cache's key */
+    uint64_t   write_epoch; /* fgl_ctx.epoch of the last write */
 } fgl_buf;
+
+/* a converted vertex stream (fgl_draw_program), kept across draws and frames */
+typedef struct fgl_stream_key {
+    int nv, vmin, stride, nin;
+    struct {
+        uint64_t version; /* 0: a constant (val) */
+        int64_t  offset;
+        int32_t  stride, type, size, flags;
+        float    val[4];
+    } in[FGL_ATTRIBS];
+} fgl_stream_key;
+typedef struct fgl_stream {
+    uint64_t       hash, used; /* hash 0: empty slot */
+    fgl_stream_key key;
+    fm3d_buffer*   buf;
+    size_t         bytes;
+} fgl_stream;
 
 typedef struct fgl_attrib {
     int        enabled, integer, normalized;
@@ -253,6 +272,10 @@ typedef struct fgl_ublock { /* a named uniform block */
 typedef struct fgl_input { /* a vertex shader input */
     char name[96];
     int  location;
+    int  slot;   /* its 16 bytes in the vertex stream (inputs packed in order; -1: none) */
+    int  va;     /* ARB programs' fgl_va<N>: N, else -1 */
+    int  legacy; /* legacy GLSL's fgl_Vertex, fgl_Normal, fgl_Color, fgl_MultiTexCoord0 / 1: 0 .. 4; -2: another fgl_ name; -1 */
+    int  index;  /* the generic attribute (glGetAttribLocation: glBindAttribLocation wins) */
 } fgl_input;
 
 typedef struct fgl_program {
@@ -272,6 +295,7 @@ typedef struct fgl_program {
     int          nblocks;
     fgl_input    in[FGL_ATTRIBS];
     int          nin;
+    int          in_stride; /* bytes per vertex of the stream (16 per input slot) */
     int          max_loc;
     struct {
         char name[96];
@@ -372,6 +396,12 @@ typedef struct fgl_ctx {
     float    alpha_ref;
     float    poly_factor, poly_units;
     float    dbounds[2]; /* glDepthBoundsEXT */
+    void*    scratch[3]; /* the program draws' index / primitive / vertex stream arrays */
+    size_t   scratch_cap[3];
+    fgl_stream* streams; /* open addressing, power of two slots */
+    int         nstream_slots, nstreams;
+    size_t      stream_bytes;
+    uint64_t    stream_clock, epoch; /* draws, flushes */
     int      unpack_align, unpack_row, pack_align, unpack_skip_rows, unpack_skip_pixels;
     int      unpack_swap, pack_swap; /* GL_UNPACK_SWAP_BYTES / GL_PACK_SWAP_BYTES */
 

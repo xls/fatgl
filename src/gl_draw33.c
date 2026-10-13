@@ -32,6 +32,52 @@ static int fgl_tsize(GLenum t)
 }
 
 /* one attribute element -> 4 words (floats, or integers for I attributes) */
+/* a per draw scratch array of the context (grown, never shrunk) */
+static void* fgl_scratch(fgl_ctx* c, int k, size_t bytes)
+{
+    if (c->scratch_cap[k] < bytes) {
+        size_t n = bytes + bytes / 2 + 256;
+        void*  q = realloc(c->scratch[k], n);
+        if (!q) return NULL;
+        c->scratch[k] = q, c->scratch_cap[k] = n;
+    }
+    return c->scratch[k];
+}
+
+static void fgl_fetch_attr(const fgl_attrib* a, const uint8_t* p, uint32_t* out);
+
+/* n vertices of attribute a from src (stride st) into out (ostride apart):
+ * the common formats in tight loops, the same values as fgl_fetch_attr */
+static void fgl_fetch_column(const fgl_attrib* a, const uint8_t* src, size_t st, int n, uint8_t* out, int ostride)
+{
+    int k = a->size < 4 ? a->size : 4;
+    if (!a->integer && a->type == GL_FLOAT) {
+        for (int v = 0; v < n; v++, src += st, out += ostride) {
+            float f[4] = { 0, 0, 0, 1 };
+            memcpy(f, src, (size_t)k * 4);
+            memcpy(out, f, 16);
+        }
+    } else if (!a->integer && a->type == GL_HALF_FLOAT) {
+        for (int v = 0; v < n; v++, src += st, out += ostride) {
+            float f[4] = { 0, 0, 0, 1 };
+            for (int j = 0; j < k; j++) {
+                uint16_t h;
+                memcpy(&h, src + 2 * j, 2);
+                f[j] = fgl_half(h);
+            }
+            memcpy(out, f, 16);
+        }
+    } else if (!a->integer && a->type == GL_UNSIGNED_BYTE) {
+        for (int v = 0; v < n; v++, src += st, out += ostride) {
+            float f[4] = { 0, 0, 0, 1 };
+            for (int j = 0; j < k; j++) f[j] = a->normalized ? (float)src[j] / 255.0f : (float)src[j];
+            memcpy(out, f, 16);
+        }
+    } else {
+        for (int v = 0; v < n; v++, src += st, out += ostride) fgl_fetch_attr(a, src, (uint32_t*)(void*)out);
+    }
+}
+
 static void fgl_fetch_attr(const fgl_attrib* a, const uint8_t* p, uint32_t* out)
 {
     float f[4] = { 0, 0, 0, 1 };
@@ -64,12 +110,11 @@ static const uint8_t* fgl_attr_base(fgl_ctx* c, const fgl_attrib* a)
 /* the array feeding a program input: a generic attribute, or for the
  * built-in inputs of legacy GLSL (fgl_Vertex, ...) the client array; NULL:
  * a constant (val) */
-static const fgl_attrib* fgl_input_source(fgl_ctx* c, const fgl_program* p, const fgl_vao* vao, const char* name, fgl_attrib* tmp,
-                                          const float** val)
+static const fgl_attrib* fgl_input_source(fgl_ctx* c, const fgl_vao* vao, const fgl_input* in, fgl_attrib* tmp, const float** val)
 {
     static const float zero1[4] = { 0, 0, 0, 1 };
-    int                va;
-    if (sscanf(name, "fgl_va%d", &va) == 1 && va >= 0 && va < FGL_ATTRIBS) { /* ARB programs: generic, else aliased */
+    int                va       = in->va;
+    if (va >= 0) { /* ARB programs: generic, else aliased */
         static const int conv[16] = { 0, -1, 1, 2, -1, -1, -1, -1, 3, 4, -1, -1, -1, -1, -1, -1 };
         *val = c->attr_value[va];
         if (va == 2) *val = c->cur_normal;
@@ -86,15 +131,13 @@ static const fgl_attrib* fgl_input_source(fgl_ctx* c, const fgl_program* p, cons
         tmp->normalized = k == 2 && tmp->type != GL_FLOAT && tmp->type != GL_DOUBLE;
         return tmp;
     }
-    if (!strncmp(name, "fgl_", 4)) {
-        const char* n = name + 4;
-        int         k = -1;
-        *val          = zero1;
-        if (!strcmp(n, "Vertex")) k = 0;
-        else if (!strcmp(n, "Normal")) k = 1, *val = c->cur_normal;
-        else if (!strcmp(n, "Color")) k = 2, *val = c->cur_color;
-        else if (!strcmp(n, "MultiTexCoord0")) k = 3, *val = c->cur_tex;
-        else if (!strcmp(n, "MultiTexCoord1")) k = 4, *val = c->cur_tex1;
+    if (in->legacy != -1) {
+        int k = in->legacy >= 0 ? in->legacy : -1;
+        *val  = zero1;
+        if (k == 1) *val = c->cur_normal;
+        else if (k == 2) *val = c->cur_color;
+        else if (k == 3) *val = c->cur_tex;
+        else if (k == 4) *val = c->cur_tex1;
         if (k == 0 && !c->va[0].on && vao->a[0].enabled) return &vao->a[0]; /* generic attribute 0 aliases gl_Vertex */
         if (k < 0 || !c->va[k].on) return NULL;
         memset(tmp, 0, sizeof(*tmp));
@@ -103,7 +146,7 @@ static const fgl_attrib* fgl_input_source(fgl_ctx* c, const fgl_program* p, cons
         tmp->normalized = k == 2 && tmp->type != GL_FLOAT && tmp->type != GL_DOUBLE; /* colors */
         return tmp;
     }
-    int g = glGetAttribLocation(p->name, name);
+    int g = in->index;
     *val  = g >= 0 && g < FGL_ATTRIBS ? c->attr_value[g] : c->attr_value[0];
     if (g == 0 && !vao->a[0].enabled && c->va[0].on) { /* compatibility: attribute 0 aliases glVertex / glVertexPointer */
         memset(tmp, 0, sizeof(*tmp));
@@ -360,6 +403,77 @@ int fgl_outline(GLenum mode, const int* vid, int count, int vmin, uint32_t* out)
     return k;
 }
 
+/* ---- the stream cache: a draw's converted vertices by (contents version, layout, range).
+ * Doom 3 BFG keeps its world in static buffers: the same streams every frame,
+ * converted once instead of per draw and handed to fatmap by reference. Buffers
+ * written in the last two flushes (per frame vertex caches) are not cached. ---- */
+#define FGL_STREAM_BUDGET ((size_t)(sizeof(void*) == 4 ? 64 : 256) << 20) /* 32 bit games: address space */
+
+static uint64_t fgl_stream_hash(const fgl_stream_key* k)
+{
+    const uint8_t* p = (const uint8_t*)k;
+    size_t         n = offsetof(fgl_stream_key, in) + (size_t)k->nin * sizeof(k->in[0]);
+    uint64_t       h = 1469598103934665603ull;
+    for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 1099511628211ull;
+    return h ? h : 1;
+}
+
+static fgl_stream* fgl_stream_find(fgl_ctx* c, const fgl_stream_key* k, uint64_t h)
+{
+    if (!c->nstream_slots) return NULL;
+    size_t n = offsetof(fgl_stream_key, in) + (size_t)k->nin * sizeof(k->in[0]);
+    for (int i = (int)(h & (uint64_t)(c->nstream_slots - 1));; i = (i + 1) & (c->nstream_slots - 1)) {
+        fgl_stream* s = &c->streams[i];
+        if (!s->hash) return NULL;
+        if (s->hash == h && !memcmp(&s->key, k, n)) return s;
+    }
+}
+
+static void fgl_stream_put(fgl_ctx* c, fgl_stream* e) /* into a table with room */
+{
+    int i = (int)(e->hash & (uint64_t)(c->nstream_slots - 1));
+    while (c->streams[i].hash) i = (i + 1) & (c->nstream_slots - 1);
+    c->streams[i] = *e;
+}
+
+/* room for one more: grow at half full; over budget keep the recently used half */
+static int fgl_stream_room(fgl_ctx* c, size_t bytes)
+{
+    int    slots = c->nstream_slots ? c->nstream_slots : 256;
+    size_t keep  = c->stream_bytes + bytes > FGL_STREAM_BUDGET ? FGL_STREAM_BUDGET / 2 : (size_t)-1;
+    if ((c->nstreams + 1) * 2 > slots) slots *= 2;
+    if (slots == c->nstream_slots && keep == (size_t)-1) return 1;
+    fgl_stream* old = c->streams;
+    int         nold = c->nstream_slots;
+    fgl_stream* n    = (fgl_stream*)calloc((size_t)slots, sizeof(fgl_stream));
+    if (!n) return 0;
+    uint64_t cut = 0; /* over budget: the newest entries that fit in half the budget stay */
+    if (keep != (size_t)-1) {
+        uint64_t lo = 0, hi = c->stream_clock + 1;
+        while (lo + 1 < hi) { /* the oldest use time whose newer entries fit */
+            uint64_t mid = lo + (hi - lo) / 2;
+            size_t   b   = 0;
+            for (int i = 0; i < nold; i++)
+                if (old[i].hash && old[i].used >= mid) b += old[i].bytes;
+            if (b <= keep) hi = mid;
+            else lo = mid;
+        }
+        cut = hi;
+    }
+    c->streams = n, c->nstream_slots = slots, c->nstreams = 0, c->stream_bytes = 0;
+    for (int i = 0; i < nold; i++) {
+        if (!old[i].hash) continue;
+        if (old[i].used < cut) {
+            fm3d_buffer_release(old[i].buf);
+            continue;
+        }
+        fgl_stream_put(c, &old[i]);
+        c->nstreams++, c->stream_bytes += old[i].bytes;
+    }
+    free(old);
+    return 1;
+}
+
 void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenum itype, const void* indices, GLint basevertex,
                       GLsizei instances)
 {
@@ -372,7 +486,7 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
     }
     fgl_vao* vao = fgl_cur_vao(c);
     /* the vertex numbers in draw order */
-    int* vid = (int*)malloc((size_t)count * sizeof(int));
+    int* vid = (int*)fgl_scratch(c, 0, (size_t)count * sizeof(int));
     if (!vid) {
         fgl_error(GL_OUT_OF_MEMORY);
         return;
@@ -385,38 +499,37 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
             ip          = eb && eb->data ? eb->data + (uintptr_t)indices : NULL;
         }
         if (!ip) {
-            free(vid);
             fgl_error(GL_INVALID_OPERATION);
             return;
         }
         /* GL_PRIMITIVE_RESTART: the index cuts strips / fans / loops (compared before the base vertex) */
         uint32_t restart = (c->enables & FGL_E_RESTART) ? c->restart_index : 0xFFFFFFFFu;
         int      cut     = (c->enables & FGL_E_RESTART) != 0;
-        for (GLsizei i = 0; i < count; i++) {
-            uint32_t e = itype == GL_UNSIGNED_BYTE ? ip[i] : (itype == GL_UNSIGNED_SHORT ? ((const uint16_t*)ip)[i] : ((const uint32_t*)ip)[i]);
-            vid[i]     = cut && e == restart ? -1 : (int)e + basevertex;
-        }
+        if (!cut && itype == GL_UNSIGNED_SHORT) /* the common case in one tight loop */
+            for (GLsizei i = 0; i < count; i++) vid[i] = (int)((const uint16_t*)ip)[i] + basevertex;
+        else if (!cut && itype == GL_UNSIGNED_INT)
+            for (GLsizei i = 0; i < count; i++) vid[i] = (int)((const uint32_t*)ip)[i] + basevertex;
+        else
+            for (GLsizei i = 0; i < count; i++) {
+                uint32_t e = itype == GL_UNSIGNED_BYTE ? ip[i] : (itype == GL_UNSIGNED_SHORT ? ((const uint16_t*)ip)[i] : ((const uint32_t*)ip)[i]);
+                vid[i]     = cut && e == restart ? -1 : (int)e + basevertex;
+            }
     } else {
         for (GLsizei i = 0; i < count; i++) vid[i] = first + i;
     }
     for (GLsizei i = 0; i < count; i++)
         if (vid[i] >= 0) vmin = vid[i] < vmin ? vid[i] : vmin, vmax = vid[i] > vmax ? vid[i] : vmax;
-    if (vmax < 0) { /* only restart indices */
-        free(vid);
-        return;
-    }
+    if (vmax < 0) return; /* only restart indices */
     int nv = vmax - vmin + 1;
     if (vmin < 0 || nv > (1 << 24)) {
-        free(vid);
         fgl_error(GL_INVALID_VALUE);
         return;
     }
     /* primitives (indices relative to vmin) */
-    uint32_t* tri  = (uint32_t*)malloc(((size_t)count * 6 + 8) * sizeof(uint32_t));
-    int       stride = 16 * (p->max_loc + 1 > 0 ? p->max_loc + 1 : 1);
-    uint8_t*  stream = (uint8_t*)malloc((size_t)nv * (size_t)stride);
+    uint32_t* tri    = (uint32_t*)fgl_scratch(c, 1, ((size_t)count * 6 + 8) * sizeof(uint32_t));
+    int       stride = p->in_stride;
+    uint8_t*  stream = (uint8_t*)fgl_scratch(c, 2, (size_t)nv * (size_t)stride);
     if (!tri || !stream) {
-        free(vid), free(tri), free(stream);
         fgl_error(GL_OUT_OF_MEMORY);
         return;
     }
@@ -424,37 +537,102 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
     if (pm == GL_POINT) mode = GL_POINTS;
     int nidx = pm == GL_LINE ? fgl_outline(mode, vid, count, vmin, tri) : fgl_assemble(mode, vid, count, vmin, tri);
     fm3d_primitive prim = mode == GL_POINTS ? FM3D_PRIM_POINTS : (mode <= GL_LINE_STRIP || pm == GL_LINE ? FM3D_PRIM_LINES : FM3D_PRIM_TRIANGLES);
-    int per_instance = 0;
+    /* where each input comes from (resolved once per draw) */
+    int               per_instance = 0;
+    fgl_attrib        tmps[FGL_ATTRIBS];
+    const float*      vals[FGL_ATTRIBS];
+    const fgl_attrib* srcs[FGL_ATTRIBS];
     for (int i = 0; i < p->nin; i++) {
-        fgl_attrib        tmp;
-        const float*      val;
-        const fgl_attrib* a = fgl_input_source(c, p, vao, p->in[i].name, &tmp, &val);
-        if (a && a->divisor) per_instance = 1;
+        srcs[i] = fgl_input_source(c, vao, &p->in[i], &tmps[i], &vals[i]);
+        if (srcs[i] && srcs[i]->divisor) per_instance = 1;
     }
     fgl_sync(c);
     fgl_sync_program(c, p);
     fm3d_set_primitive(c->c3, prim);
     fm3d_set_line_width(c->c3, c->line_width);
     fm3d_set_point_size(c->c3, c->point_size);
+    /* the stream cache: buffer attributes not written lately, constants */
+    fgl_stream_key key;
+    int            cacheable = !per_instance && nidx > 0;
+    if (cacheable) {
+        memset(&key, 0, sizeof(key));
+        key.nv = nv, key.vmin = vmin, key.stride = stride, key.nin = p->nin;
+        for (int i = 0; i < p->nin && cacheable; i++) {
+            const fgl_attrib* a = srcs[i];
+            if (p->in[i].slot < 0) continue;
+            key.in[i].flags = p->in[i].slot << 4;
+            if (!a) {
+                memcpy(key.in[i].val, vals[i], 16);
+                continue;
+            }
+            fgl_buf* b = a->buffer ? fgl_buffer(c, a->buffer) : NULL;
+            if (!b || !b->data || b->mapped || c->epoch - b->write_epoch < 2) cacheable = 0; /* client memory, fresh writes */
+            else {
+                key.in[i].version = b->version;
+                key.in[i].offset  = (int64_t)a->offset;
+                key.in[i].stride  = a->stride ? a->stride : a->size * fgl_tsize(a->type);
+                key.in[i].type = (int32_t)a->type, key.in[i].size = a->size;
+                key.in[i].flags |= (a->normalized ? 1 : 0) | (a->integer ? 2 : 0);
+            }
+        }
+    }
+    if (cacheable) {
+        uint64_t    h = fgl_stream_hash(&key);
+        fgl_stream* s = fgl_stream_find(c, &key, h);
+        if (!s) { /* convert once */
+            for (int i = 0; i < p->nin; i++) {
+                int slot = p->in[i].slot;
+                if (slot < 0) continue;
+                const fgl_attrib* a = srcs[i];
+                uint8_t*          o = stream + 16 * slot;
+                if (!a) {
+                    for (int v = 0; v < nv; v++) memcpy(o + (size_t)v * (size_t)stride, vals[i], 16);
+                    continue;
+                }
+                size_t st = a->stride ? (size_t)a->stride : (size_t)(a->size * fgl_tsize(a->type));
+                fgl_fetch_column(a, fgl_attr_base(c, a) + (size_t)vmin * st, st, nv, o, stride);
+            }
+            fgl_stream e;
+            memset(&e, 0, sizeof(e));
+            e.hash = h, e.key = key, e.bytes = (size_t)nv * (size_t)stride + sizeof(e);
+            e.buf  = fm3d_buffer_create_raw(stream, stride, nv);
+            if (e.buf && fgl_stream_room(c, e.bytes)) {
+                fgl_stream_put(c, &e);
+                c->nstreams++, c->stream_bytes += e.bytes;
+                s = fgl_stream_find(c, &key, h);
+            } else if (e.buf) {
+                fm3d_buffer_release(e.buf);
+            }
+        }
+        if (s) {
+            s->used = ++c->stream_clock;
+            for (GLsizei inst = 0; inst < instances; inst++) {
+                fm3d_set_draw_ids(c->c3, vmin, (int)inst);
+                fm3d_draw_buffer_indexed(c->c3, s->buf, tri, nidx);
+                c->cnt.draws_prog++;
+            }
+            fm3d_set_draw_ids(c->c3, 0, 0);
+            fm3d_set_primitive(c->c3, FM3D_PRIM_TRIANGLES);
+            return;
+        }
+    }
     for (GLsizei inst = 0; inst < instances && nidx > 0; inst++) {
         if (inst == 0 || per_instance) { /* the stream (again when attributes advance per instance) */
             for (int i = 0; i < p->nin; i++) {
-                int loc = p->in[i].location;
-                if (loc < 0 || loc >= FGL_ATTRIBS) continue;
-                fgl_attrib        tmp;
-                const float*      val;
-                const fgl_attrib* a    = fgl_input_source(c, p, vao, p->in[i].name, &tmp, &val);
+                int slot = p->in[i].slot;
+                if (slot < 0) continue;
+                const fgl_attrib* a    = srcs[i];
                 const uint8_t*    base = a ? fgl_attr_base(c, a) : NULL;
-                for (int v = 0; v < nv; v++) {
-                    uint32_t* o = (uint32_t*)(stream + (size_t)v * (size_t)stride + 16 * loc);
-                    if (!base) {
-                        memcpy(o, val, 16);
-                        continue;
-                    }
-                    int    e  = a->divisor ? (int)(inst / (GLsizei)a->divisor) : vmin + v;
-                    size_t st = a->stride ? (size_t)a->stride : (size_t)(a->size * fgl_tsize(a->type));
-                    fgl_fetch_attr(a, base + (size_t)e * st, o);
+                uint8_t*          o    = stream + 16 * slot;
+                if (!base) {
+                    for (int v = 0; v < nv; v++) memcpy(o + (size_t)v * (size_t)stride, vals[i], 16);
+                    continue;
                 }
+                size_t st = a->stride ? (size_t)a->stride : (size_t)(a->size * fgl_tsize(a->type));
+                if (a->divisor) /* one value for every vertex of the instance */
+                    fgl_fetch_column(a, base + (size_t)(inst / (GLsizei)a->divisor) * st, 0, nv, o, stride);
+                else
+                    fgl_fetch_column(a, base + (size_t)vmin * st, st, nv, o, stride);
             }
         }
         fm3d_set_draw_ids(c->c3, vmin, (int)inst);
@@ -463,7 +641,6 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
     }
     fm3d_set_draw_ids(c->c3, 0, 0);
     fm3d_set_primitive(c->c3, FM3D_PRIM_TRIANGLES);
-    free(vid), free(tri), free(stream);
 }
 
 fgl_program* fgl_active_program(fgl_ctx* c)

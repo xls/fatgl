@@ -342,19 +342,19 @@ static double now_ms(void)
 /* ---- --sample <file>: a sampling profiler. A thread stops every other
  * thread every quarter millisecond and records its instruction pointer; the
  * file lists module relative addresses (tools/bfgscene/profile.py names
- * them: fatgl's functions, JIT code, waits) ---- */
+ * them: fatgl's functions, JIT code, waits; " M": the main thread's) ---- */
 #include <mmsystem.h>
 #include <tlhelp32.h>
 #define MAX_SAMPLES (1 << 22)
 static uint64_t*     g_samples;
+static uint8_t*      g_on_main; /* the sample is the main thread's (the GL calls) */
 static volatile LONG g_nsamples, g_sampling;
 
 static DWORD WINAPI sampler(void* arg)
 {
-    (void)arg;
-    DWORD  self = GetCurrentThreadId();
+    DWORD  self = GetCurrentThreadId(), main_id = (DWORD)(uintptr_t)arg;
     HANDLE th[256];
-    int    nth = 0;
+    int    nth = 0, is_main[256];
     double last = -1e9;
     timeBeginPeriod(1);
     while (g_sampling) {
@@ -368,7 +368,7 @@ static DWORD WINAPI sampler(void* arg)
             for (BOOL ok = Thread32First(snap, &te); ok && nth < 256; ok = Thread32Next(snap, &te))
                 if (te.th32OwnerProcessID == GetCurrentProcessId() && te.th32ThreadID != self) {
                     HANDLE h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
-                    if (h) th[nth++] = h;
+                    if (h) is_main[nth] = te.th32ThreadID == main_id, th[nth++] = h;
                 }
             CloseHandle(snap);
             last = now_ms();
@@ -380,9 +380,9 @@ static DWORD WINAPI sampler(void* arg)
             if (GetThreadContext(th[i], &cx)) {
                 LONG k = InterlockedIncrement(&g_nsamples) - 1;
 #ifdef _WIN64
-                if (k < MAX_SAMPLES) g_samples[k] = cx.Rip;
+                if (k < MAX_SAMPLES) g_samples[k] = cx.Rip, g_on_main[k] = (uint8_t)is_main[i];
 #else
-                if (k < MAX_SAMPLES) g_samples[k] = cx.Eip;
+                if (k < MAX_SAMPLES) g_samples[k] = cx.Eip, g_on_main[k] = (uint8_t)is_main[i];
 #endif
             }
             ResumeThread(th[i]);
@@ -414,9 +414,9 @@ static void sample_write(const char* path)
             if (m) GetModuleFileNameA(m, lname, sizeof(lname));
         }
         if (m)
-            fprintf(f, "%s %llx\n", lname, (unsigned long long)(a - (uint64_t)(uintptr_t)m));
+            fprintf(f, "%s %llx%s\n", lname, (unsigned long long)(a - (uint64_t)(uintptr_t)m), g_on_main[i] ? " M" : "");
         else
-            fprintf(f, "- %llx\n", (unsigned long long)a);
+            fprintf(f, "- %llx%s\n", (unsigned long long)a, g_on_main[i] ? " M" : "");
     }
     fclose(f);
     printf("%ld samples in %s\n", (long)n, path);
@@ -714,16 +714,19 @@ int main(int argc, char** argv)
     if (prof && !report) printf("--prof: not fatgl's opengl32.dll\n");
     HANDLE  hs = NULL;
     double* ms = (double*)malloc(sizeof(double) * (size_t)(frames > 0 ? frames : 1));
+    double* issue = (double*)malloc(sizeof(double) * (size_t)(frames > 0 ? frames : 1)); /* in the GL calls (fatgl: recording) */
     for (int i = 0; i < frames + 1; i++) { /* frame 0 warms up (JIT compiles, texture caches) */
         double t = now_ms();
         frame(0);
+        double ti = now_ms();
         glFinish();
-        if (i > 0) ms[i - 1] = now_ms() - t;
+        if (i > 0) ms[i - 1] = now_ms() - t, issue[i - 1] = ti - t;
         if (i == 0 && report) report(NULL, 0, 0);
         if (i == 0 && sample) {
             g_samples  = (uint64_t*)malloc(sizeof(uint64_t) * MAX_SAMPLES);
+            g_on_main  = (uint8_t*)malloc(MAX_SAMPLES);
             g_sampling = 1;
-            hs         = CreateThread(NULL, 0, sampler, NULL, 0, NULL);
+            hs         = CreateThread(NULL, 0, sampler, (void*)(uintptr_t)GetCurrentThreadId(), 0, NULL);
             SetThreadPriority(hs, THREAD_PRIORITY_TIME_CRITICAL);
         }
     }
@@ -739,6 +742,7 @@ int main(int argc, char** argv)
         glFinish();
     }
     qsort(ms, (size_t)frames, sizeof(double), cmpd);
+    qsort(issue, (size_t)frames, sizeof(double), cmpd);
     static uint8_t img[4096 * 4096 * 4];
     glReadPixels(0, 0, g_w, g_h, GL_RGBA, GL_UNSIGNED_BYTE, img);
     uint64_t h = 1469598103934665603ull;
@@ -751,6 +755,7 @@ int main(int argc, char** argv)
                 sum[k] += c;
             }
     printf("bfgscene %dx%d: %.2f ms best, %.2f ms median of %d\n", g_w, g_h, ms[0], ms[frames / 2], frames);
+    printf("issue %.2f ms median (the GL calls; the rest is glFinish)\n", issue[frames / 2]);
     if (sections)
         for (int i = 0; i < g_nsect; i++)
             if (strcmp(g_sect_name[i], "end")) printf("  %-16s %7.2f ms\n", g_sect_name[i], g_sect_ms[i]);
