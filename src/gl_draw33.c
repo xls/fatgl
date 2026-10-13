@@ -412,9 +412,14 @@ int fgl_outline(GLenum mode, const int* vid, int count, int vmin, uint32_t* out)
 static uint64_t fgl_stream_hash(const fgl_stream_key* k)
 {
     const uint8_t* p = (const uint8_t*)k;
-    size_t         n = offsetof(fgl_stream_key, in) + (size_t)k->nin * sizeof(k->in[0]);
-    uint64_t       h = 1469598103934665603ull;
-    for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 1099511628211ull;
+    size_t         n = offsetof(fgl_stream_key, in) + (size_t)k->nin * sizeof(k->in[0]); /* a multiple of 8 */
+    uint64_t       h = 0x9E3779B97F4A7C15ull ^ n;
+    for (size_t i = 0; i < n; i += 8) { /* 8 bytes per step (the key is ~300 bytes, hashed per draw) */
+        uint64_t w;
+        memcpy(&w, p + i, 8);
+        h = (h ^ w) * 0xff51afd7ed558ccdull;
+        h ^= h >> 32;
+    }
     return h ? h : 1;
 }
 
@@ -505,20 +510,39 @@ void fgl_draw_program(fgl_ctx* c, GLenum mode, GLint first, GLsizei count, GLenu
         /* GL_PRIMITIVE_RESTART: the index cuts strips / fans / loops (compared before the base vertex) */
         uint32_t restart = (c->enables & FGL_E_RESTART) ? c->restart_index : 0xFFFFFFFFu;
         int      cut     = (c->enables & FGL_E_RESTART) != 0;
-        if (!cut && itype == GL_UNSIGNED_SHORT) /* the common case in one tight loop */
-            for (GLsizei i = 0; i < count; i++) vid[i] = (int)((const uint16_t*)ip)[i] + basevertex;
-        else if (!cut && itype == GL_UNSIGNED_INT)
-            for (GLsizei i = 0; i < count; i++) vid[i] = (int)((const uint32_t*)ip)[i] + basevertex;
-        else
+        if (!cut && itype == GL_UNSIGNED_SHORT) { /* the common cases in tight loops, the range with them */
+            int lo = 0xffff, hi = 0;
+            for (GLsizei i = 0; i < count; i++) {
+                int e  = ((const uint16_t*)ip)[i];
+                vid[i] = e + basevertex;
+                lo     = e < lo ? e : lo;
+                hi     = e > hi ? e : hi;
+            }
+            vmin = lo + basevertex, vmax = hi + basevertex;
+        } else if (!cut && itype == GL_UNSIGNED_INT) {
+            uint32_t lo = 0xffffffffu, hi = 0;
+            for (GLsizei i = 0; i < count; i++) {
+                uint32_t e = ((const uint32_t*)ip)[i];
+                vid[i]     = (int)e + basevertex;
+                lo         = e < lo ? e : lo;
+                hi         = e > hi ? e : hi;
+            }
+            if (hi <= 0x7fffffffu - (uint32_t)(basevertex > 0 ? basevertex : 0)) vmin = (int)lo + basevertex, vmax = (int)hi + basevertex;
+        } else {
             for (GLsizei i = 0; i < count; i++) {
                 uint32_t e = itype == GL_UNSIGNED_BYTE ? ip[i] : (itype == GL_UNSIGNED_SHORT ? ((const uint16_t*)ip)[i] : ((const uint32_t*)ip)[i]);
                 vid[i]     = cut && e == restart ? -1 : (int)e + basevertex;
             }
+        }
     } else {
         for (GLsizei i = 0; i < count; i++) vid[i] = first + i;
+        vmin = first, vmax = first + count - 1;
     }
-    for (GLsizei i = 0; i < count; i++)
-        if (vid[i] >= 0) vmin = vid[i] < vmin ? vid[i] : vmin, vmax = vid[i] > vmax ? vid[i] : vmax;
+    if (vmin < 0 || vmax < vmin) { /* restart indices, or ones that came out negative: those are skipped */
+        vmin = 0x7fffffff, vmax = -1;
+        for (GLsizei i = 0; i < count; i++)
+            if (vid[i] >= 0) vmin = vid[i] < vmin ? vid[i] : vmin, vmax = vid[i] > vmax ? vid[i] : vmax;
+    }
     if (vmax < 0) return; /* only restart indices */
     int nv = vmax - vmin + 1;
     if (vmin < 0 || nv > (1 << 24)) {
