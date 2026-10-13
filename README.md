@@ -121,12 +121,13 @@ average); without anisotropic filtering, which fatgl does not do yet:
 
 | scene | fatgl 1 thread | llvmpipe 1 thread | fatgl 32 threads | llvmpipe 32 threads |
 |---|---|---|---|---|
-| Underground Garage | 126 ms | 367 ms | 10.8 ms | 45.9 ms |
-| Alpha Labs 1 | 56 ms | 138 ms | 5.5 ms | 25.6 ms |
-| Hell | 117 ms | 286 ms | 7.5 ms | 26.4 ms |
+| Underground Garage | 117 ms | 367 ms | 10.3 ms | 45.9 ms |
+| Alpha Labs 1 | 47 ms | 138 ms | 4.8 ms | 25.6 ms |
+| Hell | 109 ms | 286 ms | 7.2 ms | 26.4 ms |
 
 (fatgl's and fatmap's main branches; fatgl 0.7.0 with fatmap 0.10.0: 181 / 73 /
-130 ms and 15.3 / 7.9 / 9.1 ms. With 4x MSAA on 32 threads: 52 / 20 / 12 ms.)
+130 ms and 15.3 / 7.9 / 9.1 ms. With 4x MSAA on 32 threads: 25 / 8 / 10 ms, was 105 /
+43 / 18 ms.)
 
 The shadow volumes are most of the difference: fatmap skips the batches and
 tiles whose stored depth already decides them (hierarchical z per 8 x 8
